@@ -928,8 +928,22 @@ if all_stocks:
 
            # --- VISUALISERING I DASHBOARDEN ---
                 
-                # Valda kolumner att visa i tabellerna
-                dashboard_cols = ["Bolag", "Sektor", "%-förändring (20d)", "Snitt Intradag High-Low %", "Senaste Dag %", "Senaste Omsättning"]
+                # Omdöpta kolumner för smalare tabeller
+                dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
+
+                # Funktion för att byta namn på kolumnerna innan visning
+                def get_renamed_df(data_list):
+                    if not data_list:
+                        return pd.DataFrame()
+                    df_temp = pd.DataFrame(data_list)
+                    # Byt namn från original till de korta namnen
+                    rename_map = {
+                        "%-förändring (20d)": "%20d",
+                        "Snitt Intradag High-Low %": "%HL",
+                        "Senaste Dag %": "SD%",
+                        "Senaste Omsättning": "OMS"
+                    }
+                    return df_temp.rename(columns=rename_map)[dashboard_cols]
 
                 # --- RAD 1: MOMENTUM & TOPPREKYLER (ÖVERST) ---
                 st.markdown("### 📈 Momentum & Topprekyler")
@@ -938,21 +952,21 @@ if all_stocks:
                 with col1:
                     st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
                     if m_upp4_ner1:
-                        st.dataframe(pd.DataFrame(m_upp4_ner1)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_upp4_ner1), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
                 with col2:
                     st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
                     if m_upp3_ner2:
-                        st.dataframe(pd.DataFrame(m_upp3_ner2)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_upp3_ner2), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
                 with col3:
                     st.markdown(f"**Upp 4 dagar i sträck** ({len(m_upp5)} st)")
                     if m_upp5:
-                        st.dataframe(pd.DataFrame(m_upp5)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_upp5), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
@@ -965,21 +979,21 @@ if all_stocks:
                 with col4:
                     st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
                     if m_ner3_upp2:
-                        st.dataframe(pd.DataFrame(m_ner3_upp2)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_ner3_upp2), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
                 with col5:
                     st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
                     if m_ner4_upp1:
-                        st.dataframe(pd.DataFrame(m_ner4_upp1)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_ner4_upp1), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
                 with col6:
                     st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
                     if m_ner5:
-                        st.dataframe(pd.DataFrame(m_ner5)[dashboard_cols], use_container_width=False, height=400)
+                        st.dataframe(get_renamed_df(m_ner5), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
         else:
