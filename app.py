@@ -95,7 +95,7 @@ def load_isin_cache():
 def save_isin_cache_batch(isin_dict):
     if not isin_dict:
         return
-    init_db()  # Säkerställ att tabellen finns innan sparande
+    init_db()
     conn = sqlite3.connect(DB_FILE)
     data = [(k, v) for k, v in isin_dict.items() if v]
     conn.executemany("INSERT OR REPLACE INTO stock_isin (ticker, isin) VALUES (?, ?)", data)
@@ -612,6 +612,12 @@ if all_stocks:
                     pos_days = sum(1 for p in reversed(price_diff) if p > 0)
                     neg_days = sum(1 for p in reversed(price_diff) if p < 0)
 
+                    inc_vol = sum(1 for v in reversed(vol_diff) if v > 0)
+                    dec_vol = sum(1 for v in reversed(vol_diff) if v < 0)
+
+                    vol_up_price_up = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p > 0)
+                    vol_up_price_down = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p < 0)
+
                     start_price = closes_21[1]
                     end_price = closes_21[-1]
                     pct_change = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
@@ -642,6 +648,10 @@ if all_stocks:
                         "Valuta": info["Kursvaluta"],
                         "Pos. Dagar": pos_days,
                         "Neg. Dagar": neg_days,
+                        "Stigande Volym": inc_vol,
+                        "Avtagande Volym": dec_vol,
+                        "Volym Upp + Pris Upp": vol_up_price_up,
+                        "Volym Upp + Pris Ned": vol_up_price_down,
                         "_price_diff": price_diff,
                         "_full_volumes": volumes_21
                     }
@@ -786,7 +796,7 @@ if all_stocks:
             df_country = run_analysis_for_country(country)
             render_country_dashboard(country, df_country)
 
-    # 2. SISTA FLIKEN: HUVUDVY & SCREENER MED ALLA FILTER
+    # 2. SISTA FLIKEN: HUVUDVY & SCREENER MED ALLA DINA TIDIGARE FILTER
     with all_tabs[-1]:
         st.subheader("📊 Huvudvy & Screener (Filtrering och Export)")
         
@@ -795,6 +805,8 @@ if all_stocks:
 
         if not df_screener.empty:
             st.markdown("### 🎛️ Screener-filter")
+            
+            # Kompletta filter enligt din tidigare kod
             f_col1, f_col2, f_col3 = st.columns(3)
 
             with f_col1:
@@ -810,13 +822,36 @@ if all_stocks:
             with f_col3:
                 min_abs_to = st.number_input("Minsta absoluta omsättning", min_value=0, value=0, step=100000)
 
-            with st.expander("Fler avancerade filter (High-Low, Volym, Mönster)"):
-                use_hl_filter = st.checkbox("Aktivera High-Low filter")
-                min_avg_hl_pct = st.slider("Minst genomsnittlig High-Low (%)", 0.0, 20.0, 0.0, step=0.5)
+            # Utökade expander-filter
+            with st.expander("⚡ Avancerade filter (High-Low, Volym, Mönster & Momentum)", expanded=True):
+                col_ex1, col_ex2 = st.columns(2)
 
-                use_vol_filter = st.checkbox("Aktivera volymfilter")
-                vol_sma_days = st.slider("Jämför mot snitt antal dagar:", 1, 20, 4)
-                min_vol_spike = st.slider("Minst volym vs snitt (%)", -100, 500, 0, step=10)
+                with col_ex1:
+                    use_hl_filter = st.checkbox("Aktivera High-Low filter")
+                    min_avg_hl_pct = st.slider("Minst genomsnittlig High-Low (%)", 0.0, 20.0, 0.0, step=0.5)
+
+                    use_vol_filter = st.checkbox("Aktivera volymfilter")
+                    vol_sma_days = st.slider("Jämför mot snitt antal dagar:", 1, 20, 4)
+                    min_vol_spike = st.slider("Minst volym vs snitt (%)", -100, 500, 0, step=10)
+
+                with col_ex2:
+                    pattern_choice = st.selectbox(
+                        "Mönstertyp:",
+                        ["Inget specifikt mönster", "Bottenvändning (Ner X dagar -> Upp Y dagar)", "Rekyl (Upp X dagar -> Ner Y dagar)"]
+                    )
+                    min_a_rev = 1
+                    min_b_rev = 0
+                    if pattern_choice.startswith("Bottenvändning"):
+                        min_a_rev = st.slider("X (Dagar ner innan vändning):", 1, 5, 3)
+                        min_b_rev = st.slider("Y (Dagar upp efter vändning):", 0, 4, 1)
+                    elif pattern_choice.startswith("Rekyl"):
+                        min_a_rev = st.slider("X (Dagar upp före rekyl):", 1, 5, 3)
+                        min_b_rev = st.slider("Y (Dagar ner i rekyl):", 0, 4, 1)
+
+                    min_pos = st.slider("Minst positiva dagar i rad", 0, 5, 0)
+                    min_neg = st.slider("Minst negativa dagar i rad", 0, 5, 0)
+                    min_inc_vol = st.slider("Minst dagar med stigande volym", 0, 5, 0)
+                    min_vol_p_up = st.slider("Minst dagar Volym Upp + Pris Upp", 0, 5, 0)
 
             def calc_vol_spike(row):
                 vols = row["_full_volumes"]
@@ -828,12 +863,36 @@ if all_stocks:
                     return 0.0
                 return ((row["Senaste Volym"] - avg_v) / avg_v) * 100
 
+            def match_pattern(row):
+                if pattern_choice == "Inget specifikt mönster":
+                    return True
+                p_diff = row["_price_diff"]
+                x = min_a_rev
+                y = min_b_rev
+                if len(p_diff) < (x + y):
+                    return False
+                if pattern_choice.startswith("Bottenvändning"):
+                    if y > 0 and not all(p > 0 for p in p_diff[-y:]):
+                        return False
+                    prior_x = p_diff[-(x + y):-y] if y > 0 else p_diff[-x:]
+                    return all(p < 0 for p in prior_x)
+                elif pattern_choice.startswith("Rekyl"):
+                    if y > 0 and not all(p < 0 for p in p_diff[-y:]):
+                        return False
+                    prior_x = p_diff[-(x + y):-y] if y > 0 else p_diff[-x:]
+                    return all(p > 0 for p in prior_x)
+                return True
+
             df_screener["Volym vs Snitt %"] = df_screener.apply(calc_vol_spike, axis=1)
 
             filtered_df = df_screener[
                 (df_screener["Sektor"].isin(selected_sectors)) &
                 (df_screener["Bransch"].isin(selected_branches)) &
-                (df_screener["Senaste Omsättning"] >= min_abs_to)
+                (df_screener["Senaste Omsättning"] >= min_abs_to) &
+                (df_screener["Pos. Dagar"] >= min_pos) &
+                (df_screener["Neg. Dagar"] >= min_neg) &
+                (df_screener["Stigande Volym"] >= min_inc_vol) &
+                (df_screener["Volym Upp + Pris Upp"] >= min_vol_p_up)
             ]
 
             if use_hl_filter:
@@ -841,6 +900,9 @@ if all_stocks:
 
             if use_vol_filter:
                 filtered_df = filtered_df[filtered_df["Volym vs Snitt %"] >= min_vol_spike]
+
+            if pattern_choice != "Inget specifikt mönster":
+                filtered_df = filtered_df[filtered_df.apply(match_pattern, axis=1)]
 
             display_df = filtered_df.drop(columns=["_full_volumes", "_price_diff"])
             display_df = display_df.rename(columns={"Volym vs Snitt %": f"Volym vs {vol_sma_days}d Snitt %"})
