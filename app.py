@@ -422,7 +422,7 @@ if all_stocks:
 
     available_countries = sorted(list(set([s["Land"] for s in all_stocks if s["Land"] != "nan"])))
 
-    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND (INKLUSIVE AVANCERADE MODELLER) ---
+    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND (INKLUSIVE VCP OCH AVANCERADE MODELLER) ---
     def run_analysis_for_country(c_name):
         c_stocks = [s for s in all_stocks if s["Land"] == c_name]
         analysis_rows = []
@@ -464,7 +464,7 @@ if all_stocks:
                     hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
                     avg_hl_pct = hl_pct_series.mean()
 
-                    # --- BERÄKNING AV AVANCERADE MODELLER ---
+                    # --- BERÄKNING AV AVANCERADE MODELLER & VCP ---
                     last_open = df_21['Open'].iloc[-1]
                     last_high = df_21['High'].iloc[-1]
                     last_low = df_21['Low'].iloc[-1]
@@ -486,6 +486,11 @@ if all_stocks:
                     ranges_arr = (df_21['High'] - df_21['Low']) / df_21['Close'] * 100
                     avg_range_20 = ranges_arr.iloc[:-1].mean()
                     is_effort_result = bool((ranges_arr.iloc[-1] >= 1.5 * avg_range_20) and (last_vol >= 1.8 * avg_vol_10) and is_up_day)
+
+                    # VCP (Volatility Contraction Pattern) Logik
+                    recent_hl_5 = hl_pct_series.tail(5).mean()
+                    prev_hl_15 = hl_pct_series.iloc[:-5].mean() if len(hl_pct_series) >= 5 else avg_hl_pct
+                    is_vcp = bool((recent_hl_5 < 0.75 * prev_hl_15) and (recent_hl_5 < 4.0))
 
                     row_data = {
                         "Bolag": info["Bolagsnamn"],
@@ -511,6 +516,7 @@ if all_stocks:
                         "Pocket Pivot": is_pocket_pivot,
                         "Volymtorka + Spike": is_vol_dry_spike,
                         "Effort vs Result": is_effort_result,
+                        "VCP": is_vcp,
                         "_price_diff": price_diff,
                         "_full_volumes": volumes_21
                     }
@@ -732,6 +738,7 @@ if all_stocks:
             filter_pocket_pivot = st.checkbox("Endast Pocket Pivots")
             filter_vol_dry_spike = st.checkbox("Endast Volymtorka + Spike")
             filter_effort_result = st.checkbox("Endast Effort vs Result (ERV)")
+            filter_vcp = st.checkbox("Endast Volatilitetskontraktion (VCP)")
             min_close_near_high = st.slider("Minst stängning nära High (%)", 0.0, 100.0, 0.0, step=5.0)
 
     # --- RENDERINGSFUNKTION FÖR EN LANDSDASHBOARD ---
@@ -766,7 +773,7 @@ if all_stocks:
 
         m_ner3_upp2, m_ner4_upp1, m_upp4_ner1 = [], [], []
         m_upp3_ner2, m_upp5, m_ner5 = [], [], []
-        m_pocket_pivot, m_vol_dry_spike, m_effort_result = [], [], []
+        m_pocket_pivot, m_vol_dry_spike, m_effort_result, m_vcp = [], [], [], []
 
         for _, row in df_c.iterrows():
             p_diff = row.get("_price_diff", [])
@@ -780,6 +787,7 @@ if all_stocks:
             if row.get("Pocket Pivot"): m_pocket_pivot.append(row)
             if row.get("Volymtorka + Spike"): m_vol_dry_spike.append(row)
             if row.get("Effort vs Result"): m_effort_result.append(row)
+            if row.get("VCP"): m_vcp.append(row)
 
         dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
 
@@ -874,9 +882,10 @@ if all_stocks:
         st.markdown(
             "> * **Pocket Pivots:** Uppdag vars volym slår den högsta säljvolymen på neddagar senaste 10d (institutionell dold ackumulering).\n"
             "> * **Volymtorka + Spike:** Omsättningen torkar ut kraftigt nyligen för att sedan explodera på uppsidan (säljarna uttömda).\n"
-            "> * **Effort vs Result (ERV):** Ovanligt bred prisrörelse kombinerat med massiv volymexpansion (stark obalans mellan köpare och säljare)."
+            "> * **Effort vs Result (ERV):** Ovanligt bred prisrörelse kombinerat med massiv volymexpansion (stark obalans).\n"
+            "> * **VCP (Volatility Contraction Pattern):** Prisintervallen krymper progressivt över tid och bildar en tight bas (Minervinis utbrottsmodell)."
         )
-        col10, col11, col12 = st.columns(3)
+        col10, col11, col12, col13 = st.columns(4)
 
         with col10:
             st.markdown(f"**Pocket Pivots** ({len(m_pocket_pivot)} st)")
@@ -891,6 +900,11 @@ if all_stocks:
         with col12:
             st.markdown(f"**Effort vs Result (ERV)** ({len(m_effort_result)} st)")
             if m_effort_result: st.dataframe(get_renamed_df(m_effort_result), use_container_width=False, height=350)
+            else: st.info("Inga träffar.")
+
+        with col13:
+            st.markdown(f"**VCP (Volatility Contraction)** ({len(m_vcp)} st)")
+            if m_vcp: st.dataframe(get_renamed_df(m_vcp), use_container_width=False, height=350)
             else: st.info("Inga träffar.")
 
     # --- DYNAMISKA FLIKAR: EN FÖR VARJE LAND + SCREENER ---
@@ -971,6 +985,9 @@ if all_stocks:
 
             if filter_effort_result:
                 filtered_df = filtered_df[filtered_df["Effort vs Result"] == True]
+
+            if filter_vcp:
+                filtered_df = filtered_df[filtered_df["VCP"] == True]
 
             display_df = filtered_df.drop(columns=["_full_volumes", "_price_diff"])
             display_df = display_df.rename(columns={"Volym vs Snitt %": f"Volym vs {vol_sma_days}d Snitt %"})
