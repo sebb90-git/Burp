@@ -870,7 +870,7 @@ if all_stocks:
             tab_dashboard, tab1, tab2 = st.tabs(["🚀 Dashboard & Topplistor", "📊 Huvudvy & Screener", "📅 Senaste 5 dagarnas förändring"])
 
             with tab_dashboard:
-                st.subheader("📊 Daglig Marknadsöversikt & Mönstertrigger")
+               
                 
                 # Hjälpfunktion för att matcha specifika mönster baserat på prisdifferenser
                 def check_exact_pattern(p_diff, pattern_type):
