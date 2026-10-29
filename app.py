@@ -817,7 +817,7 @@ if all_stocks:
         st.markdown("---")
 
         # --- RAD 2: BOTTENVÄNDNINGAR / REKYLER ---
-        st.markdown("### 📉 Bottenvändningar / Rekyler")
+        st.markdown("### 📉 Bottenvändning / Rekyler")
         col4, col5, col6 = st.columns(3)
 
         with col4:
@@ -871,6 +871,11 @@ if all_stocks:
 
         # --- RAD 4: AVANCERADE KVANT- & VOLYMSTRUKTURER ---
         st.markdown("### 🔬 Avancerade Kvant- & Volymmönster")
+        st.markdown(
+            "> * **Pocket Pivots:** Uppdag vars volym slår den högsta säljvolymen på neddagar senaste 10d (institutionell dold ackumulering).\n"
+            "> * **Volymtorka + Spike:** Omsättningen torkar ut kraftigt nyligen för att sedan explodera på uppsidan (säljarna uttömda).\n"
+            "> * **Effort vs Result (ERV):** Ovanligt bred prisrörelse kombinerat med massiv volymexpansion (stark obalans mellan köpare och säljare)."
+        )
         col10, col11, col12 = st.columns(3)
 
         with col10:
