@@ -926,48 +926,57 @@ if all_stocks:
                     if check_exact_pattern(p_diff, "ner_5"):
                         m_ner5.append(row)
 
-                # --- VISUALISERING I DASHBOARDEN ---
-                col1, col2 = st.columns(2)
+            # --- VISUALISERING I DASHBOARDEN ---
+                
+                # --- RAD 1: MOMENTUM & TOPPREKYLER (ÖVERST) ---
+                st.markdown("### 📈 Momentum & Topprekyler")
+                col1, col2, col3 = st.columns(3)
 
                 with col1:
-                    st.markdown("### 📉 Bottenvändningar / Rekyler")
-                    
-                    st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
-                    if m_ner3_upp2:
-                        st.dataframe(pd.DataFrame(m_ner3_upp2)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
-                    else:
-                        st.info("Inga träffar.")
-
-                    st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
-                    if m_ner4_upp1:
-                        st.dataframe(pd.DataFrame(m_ner4_upp1)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
-                    else:
-                        st.info("Inga träffar.")
-
-                    st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
-                    if m_ner5:
-                        st.dataframe(pd.DataFrame(m_ner5)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
-                    else:
-                        st.info("Inga träffar.")
-
-                with col2:
-                    st.markdown("### 📈 Momentum & Topprekyler")
-
                     st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
                     if m_upp4_ner1:
                         st.dataframe(pd.DataFrame(m_upp4_ner1)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
+                with col2:
                     st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
                     if m_upp3_ner2:
                         st.dataframe(pd.DataFrame(m_upp3_ner2)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
 
+                with col3:
                     st.markdown(f"**Upp 4 dagar i sträck** ({len(m_upp5)} st)")
                     if m_upp5:
                         st.dataframe(pd.DataFrame(m_upp5)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
+
+                st.markdown("---")
+
+                # --- RAD 2: BOTTENVÄNDNINGAR / REKYLER (UNDER) ---
+                st.markdown("### 📉 Bottenvändningar / Rekyler")
+                col4, col5, col6 = st.columns(3)
+
+                with col4:
+                    st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
+                    if m_ner3_upp2:
+                        st.dataframe(pd.DataFrame(m_ner3_upp2)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
+
+                with col5:
+                    st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
+                    if m_ner4_upp1:
+                        st.dataframe(pd.DataFrame(m_ner4_upp1)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
+
+                with col6:
+                    st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
+                    if m_ner5:
+                        st.dataframe(pd.DataFrame(m_ner5)[["Bolag", "Sektor", "%-förändring (20d)"]], use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
         else:
