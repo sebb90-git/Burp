@@ -469,28 +469,23 @@ if all_stocks:
                     last_high = df_21['High'].iloc[-1]
                     last_low = df_21['Low'].iloc[-1]
                     
-                    # 1. Open-to-Close Momentum (Stängning nära High %)
                     day_range = last_high - last_low
                     close_near_high_pct = ((last_price - last_low) / day_range * 100) if day_range > 0 else 50.0
 
-                    # 2. Pocket Pivot (Volym på uppdag > max volym på neddagar senaste 10d)
                     sub_10 = df_21.tail(11)
                     is_up_day = last_price > last_open
                     down_days_vols = [sub_10['Volume'].iloc[i] for i in range(len(sub_10)-1) if sub_10['Close'].iloc[i] < sub_10['Open'].iloc[i]]
                     max_down_vol = max(down_days_vols) if down_days_vols else 0
                     is_pocket_pivot = bool(is_up_day and (last_vol > max_down_vol) and (max_down_vol > 0))
 
-                    # 3. Volymtorka + Spike (Låg volym nyligen följt av volymexpansion och uppgång)
                     vols_arr = df_21['Volume'].values
                     avg_vol_10 = vols_arr[-11:-1].mean() if len(vols_arr) >= 11 else vols_arr[:-1].mean()
                     recent_min_vol = vols_arr[-6:-1].min() if len(vols_arr) >= 6 else vols_arr[0]
                     is_vol_dry_spike = bool((recent_min_vol <= 0.7 * avg_vol_10) and (last_vol >= 1.8 * avg_vol_10) and is_up_day)
 
-                    # 4. Effort vs Result (ERV - Stark pris- och volymexpansion jmf med 20d snitt)
                     ranges_arr = (df_21['High'] - df_21['Low']) / df_21['Close'] * 100
                     avg_range_20 = ranges_arr.iloc[:-1].mean()
-                    avg_vol_20 = df_21['Volume'].iloc[:-1].mean()
-                    is_effort_result = bool((ranges_arr.iloc[-1] >= 1.5 * avg_range_20) and (last_vol >= 1.8 * avg_vol_20) and is_up_day)
+                    is_effort_result = bool((ranges_arr.iloc[-1] >= 1.5 * avg_range_20) and (last_vol >= 1.8 * avg_vol_10) and is_up_day)
 
                     row_data = {
                         "Bolag": info["Bolagsnamn"],
@@ -733,7 +728,6 @@ if all_stocks:
             min_inc_vol = st.slider("Minst dagar med stigande volym", 0, 5, 0)
             min_vol_p_up = st.slider("Minst dagar Volym Upp + Pris Upp", 0, 5, 0)
 
-        # --- NYA AVANCERADE KVANT- & VOLYMFILTER ---
         with st.expander("🔬 Avancerade Kvant- & Volymfilter", expanded=False):
             filter_pocket_pivot = st.checkbox("Endast Pocket Pivots")
             filter_vol_dry_spike = st.checkbox("Endast Volymtorka + Spike")
@@ -772,6 +766,7 @@ if all_stocks:
 
         m_ner3_upp2, m_ner4_upp1, m_upp4_ner1 = [], [], []
         m_upp3_ner2, m_upp5, m_ner5 = [], [], []
+        m_pocket_pivot, m_vol_dry_spike, m_effort_result = [], [], []
 
         for _, row in df_c.iterrows():
             p_diff = row.get("_price_diff", [])
@@ -781,6 +776,10 @@ if all_stocks:
             if check_exact_pattern(p_diff, "upp_3_ner_2"): m_upp3_ner2.append(row)
             if check_exact_pattern(p_diff, "upp_5"): m_upp5.append(row)
             if check_exact_pattern(p_diff, "ner_5"): m_ner5.append(row)
+
+            if row.get("Pocket Pivot"): m_pocket_pivot.append(row)
+            if row.get("Volymtorka + Spike"): m_vol_dry_spike.append(row)
+            if row.get("Effort vs Result"): m_effort_result.append(row)
 
         dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
 
@@ -866,6 +865,27 @@ if all_stocks:
         with col9:
             st.markdown(f"**Stigande volym (4 dagar)** ({len(m_inc_vol_4)} st)")
             if m_inc_vol_4: st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=False, height=350)
+            else: st.info("Inga träffar.")
+
+        st.markdown("---")
+
+        # --- RAD 4: AVANCERADE KVANT- & VOLYMSTRUKTURER ---
+        st.markdown("### 🔬 Avancerade Kvant- & Volymmönster")
+        col10, col11, col12 = st.columns(3)
+
+        with col10:
+            st.markdown(f"**Pocket Pivots** ({len(m_pocket_pivot)} st)")
+            if m_pocket_pivot: st.dataframe(get_renamed_df(m_pocket_pivot), use_container_width=False, height=350)
+            else: st.info("Inga träffar.")
+
+        with col11:
+            st.markdown(f"**Volymtorka + Spike** ({len(m_vol_dry_spike)} st)")
+            if m_vol_dry_spike: st.dataframe(get_renamed_df(m_vol_dry_spike), use_container_width=False, height=350)
+            else: st.info("Inga träffar.")
+
+        with col12:
+            st.markdown(f"**Effort vs Result (ERV)** ({len(m_effort_result)} st)")
+            if m_effort_result: st.dataframe(get_renamed_df(m_effort_result), use_container_width=False, height=350)
             else: st.info("Inga träffar.")
 
     # --- DYNAMISKA FLIKAR: EN FÖR VARJE LAND + SCREENER ---
