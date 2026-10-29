@@ -996,6 +996,53 @@ if all_stocks:
                         st.dataframe(get_renamed_df(m_ner5), use_container_width=False, height=400)
                     else:
                         st.info("Inga träffar.")
+                        
+                # --- RAD 3: INTRADAG & VOLYMSTRUKTUR (NY) ---
+                st.markdown("---")
+                st.markdown("### ⚡ Intradag & Volymmönster")
+
+                # Villkor 1: Aktier med över 4% i snitt intradag High-Low
+                m_high_hl = [row for row in df_res.to_dict(orient="records") if row.get("Snitt Intradag High-Low %", 0) >= 4.0]
+
+                # Villkor 2 & 3: Ökad volym de senaste 3 respektive 4 dagarna
+                m_inc_vol_3 = []
+                m_inc_vol_4 = []
+
+                for _, row in df_res.iterrows():
+                    vols = row.get("_full_volumes", [])
+                    if len(vols) >= 4:
+                        # Jämför de senaste dagarnas volymer (sista elementet är idag)
+                        # Kolla om varje dag har strikt högre volym än dagen innan
+                        v_last_3 = [vols[-3] > vols[-4], vols[-2] > vols[-3], vols[-1] > vols[-2]]
+                        v_last_4 = [vols[-4] > vols[-5]] + v_last_3 if len(vols) >= 5 else []
+
+                        if all(v_last_3):
+                            m_inc_vol_3.append(row)
+                        if len(v_last_4) == 4 and all(v_last_4):
+                            m_inc_vol_4.append(row)
+
+                col7, col8, col9 = st.columns(3)
+
+                with col7:
+                    st.markdown(f"**Intradag High-Low > 4%** ({len(m_high_hl)} st)")
+                    if m_high_hl:
+                        st.dataframe(get_renamed_df(m_high_hl), use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
+
+                with col8:
+                    st.markdown(f"**Stigande volym (3 dagar)** ({len(m_inc_vol_3)} st)")
+                    if m_inc_vol_3:
+                        st.dataframe(get_renamed_df(m_inc_vol_3), use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
+
+                with col9:
+                    st.markdown(f"**Stigande volym (4 dagar)** ({len(m_inc_vol_4)} st)")
+                    if m_inc_vol_4:
+                        st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=False, height=400)
+                    else:
+                        st.info("Inga träffar.")
         else:
             st.warning(f"Ingen historisk data tillgänglig för {selected_country}. Klicka på '🔄 Uppdatera Priser & Hämta ISIN' i sidofältet.")
     else:
