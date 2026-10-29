@@ -418,13 +418,13 @@ all_stocks = load_data_from_excel(EXCEL_FILE)
 if all_stocks:
     history_dict = load_history_from_db()
 
-    # --- LISTA ALLA LÄNDER ---
+    # --- ALLA TILLGÄNGLIGA LÄNDER ---
     available_countries = sorted(list(set([s["Land"] for s in all_stocks if s["Land"] != "nan"])))
 
-    # --- SIDOFÄLT FÖR MANUELL UPPDATERING OCH SCREENER-LAND ---
+    # --- SIDOFÄLT FÖR MANUELL DATABASUPPDATERING ---
     with st.sidebar:
         st.markdown("### ⚙️ Databashantering")
-        country_to_update = st.selectbox("Välj land att uppdatera manuellt:", available_countries)
+        country_to_update = st.selectbox("Land att uppdatera:", available_countries)
         update_prices_btn = st.button("🔄 Uppdatera Priser & Hämta ISIN", use_container_width=True)
 
         if update_prices_btn:
@@ -583,9 +583,9 @@ if all_stocks:
             st.success("Pris- och ISIN-uppdateringen klar!")
             st.rerun()
 
-    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND ---
-    def run_analysis_for_country(c_name):
-        c_stocks = [s for s in all_stocks if s["Land"] == c_name]
+    # --- ANALYSFUNKTION PER LAND ---
+    def run_country_analysis(country_name):
+        c_stocks = [s for s in all_stocks if s["Land"] == country_name]
         analysis_rows = []
 
         for info in c_stocks:
@@ -605,6 +605,26 @@ if all_stocks:
                     pos_days = sum(1 for p in reversed(price_diff) if p > 0)
                     neg_days = sum(1 for p in reversed(price_diff) if p < 0)
 
+                    inc_vol = 0
+                    for v in reversed(vol_diff):
+                        if v > 0: inc_vol += 1
+                        else: break
+
+                    dec_vol = 0
+                    for v in reversed(vol_diff):
+                        if v < 0: dec_vol += 1
+                        else: break
+
+                    vol_up_price_up = 0
+                    for v, p in reversed(list(zip(vol_diff, price_diff))):
+                        if v > 0 and p > 0: vol_up_price_up += 1
+                        else: break
+
+                    vol_up_price_down = 0
+                    for v, p in reversed(list(zip(vol_diff, price_diff))):
+                        if v > 0 and p < 0: vol_up_price_down += 1
+                        else: break
+
                     start_price = closes_21[1]
                     end_price = closes_21[-1]
                     pct_change = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
@@ -616,6 +636,9 @@ if all_stocks:
                     last_turnover = int(last_price * last_vol)
 
                     df_tail20 = df_21.tail(20)
+                    all_dates = [idx.strftime('%Y-%m-%d') for idx in df_tail20.index]
+                    latest_date = all_dates[-1]
+
                     hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
                     avg_hl_pct = hl_pct_series.mean()
 
@@ -625,6 +648,7 @@ if all_stocks:
                         "ISIN": info["ISIN"],
                         "Land": info["Land"],
                         "Lista": info["Lista"],
+                        "Senaste Datum": latest_date,
                         "%-förändring (20d)": round(pct_change, 2),
                         "Snitt Intradag High-Low %": round(avg_hl_pct, 2),
                         "Senaste Dag %": round(latest_day_pct, 2),
@@ -635,151 +659,175 @@ if all_stocks:
                         "Valuta": info["Kursvaluta"],
                         "Pos. Dagar": pos_days,
                         "Neg. Dagar": neg_days,
+                        "Stigande Volym": inc_vol,
+                        "Avtagande Volym": dec_vol,
+                        "Volym Upp + Pris Upp": vol_up_price_up,
+                        "Volym Upp + Pris Ned": vol_up_price_down,
                         "_price_diff": price_diff,
                         "_full_volumes": volumes_21
                     }
                     analysis_rows.append(row_data)
         return pd.DataFrame(analysis_rows)
 
-    # --- MÖNSTERANALYS OCH RENDERINGSFUNKTION FÖR EN DASHBOARD ---
-    def render_country_dashboard(df_c):
-        if df_c.empty:
-            st.info("Ingen prisdata tillgänglig för detta land ännu.")
-            return
+    # --- SKAPA FLIKAR (EN PER LAND + SCREENER) ---
+    tab_list = available_countries + ["Screener"]
+    tabs = st.tabs(tab_list)
 
-        def check_exact_pattern(p_diff, pattern_type):
-            if len(p_diff) < 5:
-                return False
-            if pattern_type == "ner_3_upp_2":
-                return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] > 0 and p_diff[-1] > 0
-            elif pattern_type == "ner_4_upp_1":
-                return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] < 0 and p_diff[-1] > 0
-            elif pattern_type == "upp_4_ner_1":
-                return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] > 0 and p_diff[-1] < 0
-            elif pattern_type == "upp_3_ner_2":
-                return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] < 0 and p_diff[-1] < 0
-            elif pattern_type == "upp_5":
-                return all(p > 0 for p in p_diff[-5:])
-            elif pattern_type == "ner_5":
-                return all(p < 0 for p in p_diff[-5:])
-            return False
+    # --- KOD FÖR VARJE LANDSFLIK ---
+    for idx, c_name in enumerate(available_countries):
+        with tabs[idx]:
+            c_stocks_meta = [s for s in all_stocks if s["Land"] == c_name]
+            cached_c = sum(1 for s in c_stocks_meta if s["Yahoo_Ticker"] in history_dict)
+            isin_c = sum(1 for s in c_stocks_meta if s.get("ISIN"))
 
-        m_ner3_upp2, m_ner4_upp1, m_upp4_ner1 = [], [], []
-        m_upp3_ner2, m_upp5, m_ner5 = [], [], []
+            st.info(f"📍 **{c_name}**: {len(c_stocks_meta)} aktier i filen | **{cached_c}** nedladdade | **{isin_c}** med ISIN.")
 
-        for _, row in df_c.iterrows():
-            p_diff = row.get("_price_diff", [])
-            if check_exact_pattern(p_diff, "ner_3_upp_2"): m_ner3_upp2.append(row)
-            if check_exact_pattern(p_diff, "ner_4_upp_1"): m_ner4_upp1.append(row)
-            if check_exact_pattern(p_diff, "upp_4_ner_1"): m_upp4_ner1.append(row)
-            if check_exact_pattern(p_diff, "upp_3_ner_2"): m_upp3_ner2.append(row)
-            if check_exact_pattern(p_diff, "upp_5"): m_upp5.append(row)
-            if check_exact_pattern(p_diff, "ner_5"): m_ner5.append(row)
+            df_res = run_country_analysis(c_name)
 
-        dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
+            if not df_res.empty:
+                # --- EXPORT FÖR INFRONT ---
+                infront_export_df = pd.DataFrame({
+                    "ISIN": df_res["ISIN"],
+                    "Symbol": df_res["Ticker"],
+                    "Beskrivning": df_res["Bolag"]
+                })
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    infront_export_df.to_excel(writer, index=False, sheet_name='Sheet1')
+                excel_data = excel_buffer.getvalue()
 
-        def get_renamed_df(data_list):
-            if not data_list:
-                return pd.DataFrame()
-            df_temp = pd.DataFrame(data_list)
-            rename_map = {
-                "%-förändring (20d)": "%20d",
-                "Snitt Intradag High-Low %": "%HL",
-                "Senaste Dag %": "SD%",
-                "Senaste Omsättning": "OMS"
-            }
-            return df_temp.rename(columns=rename_map)[dashboard_cols]
+                st.download_button(
+                    label=f"📊 Ladda ner Infront Excel för {c_name} (.xlsx)",
+                    data=excel_data,
+                    file_name=f"infront_isin_import_{c_name.lower()}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
-        # --- RAD 1: MOMENTUM & TOPPREKYLER ---
-        st.markdown("### 📈 Momentum & Topprekyler")
-        col1, col2, col3 = st.columns(3)
+                # --- MÖNSTERANALYS ---
+                def check_exact_pattern(p_diff, pattern_type):
+                    if len(p_diff) < 5:
+                        return False
+                    if pattern_type == "ner_3_upp_2":
+                        return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] > 0 and p_diff[-1] > 0
+                    elif pattern_type == "ner_4_upp_1":
+                        return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] < 0 and p_diff[-1] > 0
+                    elif pattern_type == "upp_4_ner_1":
+                        return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] > 0 and p_diff[-1] < 0
+                    elif pattern_type == "upp_3_ner_2":
+                        return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] < 0 and p_diff[-1] < 0
+                    elif pattern_type == "upp_5":
+                        return all(p > 0 for p in p_diff[-5:])
+                    elif pattern_type == "ner_5":
+                        return all(p < 0 for p in p_diff[-5:])
+                    return False
 
-        with col1:
-            st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
-            if m_upp4_ner1: st.dataframe(get_renamed_df(m_upp4_ner1), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                m_ner3_upp2, m_ner4_upp1, m_upp4_ner1 = [], [], []
+                m_upp3_ner2, m_upp5, m_ner5 = [], [], []
 
-        with col2:
-            st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
-            if m_upp3_ner2: st.dataframe(get_renamed_df(m_upp3_ner2), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                for _, row in df_res.iterrows():
+                    p_diff = row.get("_price_diff", [])
+                    if check_exact_pattern(p_diff, "ner_3_upp_2"): m_ner3_upp2.append(row)
+                    if check_exact_pattern(p_diff, "ner_4_upp_1"): m_ner4_upp1.append(row)
+                    if check_exact_pattern(p_diff, "upp_4_ner_1"): m_upp4_ner1.append(row)
+                    if check_exact_pattern(p_diff, "upp_3_ner_2"): m_upp3_ner2.append(row)
+                    if check_exact_pattern(p_diff, "upp_5"): m_upp5.append(row)
+                    if check_exact_pattern(p_diff, "ner_5"): m_ner5.append(row)
 
-        with col3:
-            st.markdown(f"**Upp 4 dagar i sträck** ({len(m_upp5)} st)")
-            if m_upp5: st.dataframe(get_renamed_df(m_upp5), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
 
-        st.markdown("---")
+                def get_renamed_df(data_list):
+                    if not data_list:
+                        return pd.DataFrame()
+                    df_temp = pd.DataFrame(data_list)
+                    rename_map = {
+                        "%-förändring (20d)": "%20d",
+                        "Snitt Intradag High-Low %": "%HL",
+                        "Senaste Dag %": "SD%",
+                        "Senaste Omsättning": "OMS"
+                    }
+                    return df_temp.rename(columns=rename_map)[dashboard_cols]
 
-        # --- RAD 2: BOTTENVÄNDNINGAR / REKYLER ---
-        st.markdown("### 📉 Bottenvändningar / Rekyler")
-        col4, col5, col6 = st.columns(3)
+                # --- RAD 1: MOMENTUM & TOPPREKYLER ---
+                st.markdown("### 📈 Momentum & Topprekyler")
+                col1, col2, col3 = st.columns(3)
 
-        with col4:
-            st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
-            if m_ner3_upp2: st.dataframe(get_renamed_df(m_ner3_upp2), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                with col1:
+                    st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
+                    if m_upp4_ner1: st.dataframe(get_renamed_df(m_upp4_ner1), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        with col5:
-            st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
-            if m_ner4_upp1: st.dataframe(get_renamed_df(m_ner4_upp1), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                with col2:
+                    st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
+                    if m_upp3_ner2: st.dataframe(get_renamed_df(m_upp3_ner2), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        with col6:
-            st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
-            if m_ner5: st.dataframe(get_renamed_df(m_ner5), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                with col3:
+                    st.markdown(f"**Upp 4 dagar i sträck** ({len(m_upp5)} st)")
+                    if m_upp5: st.dataframe(get_renamed_df(m_upp5), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        st.markdown("---")
+                st.markdown("---")
 
-        # --- RAD 3: INTRADAG & VOLYMSTRUKTUR ---
-        st.markdown("### ⚡ Intradag & Volymmönster")
-        m_high_hl = [row for row in df_c.to_dict(orient="records") if row.get("Snitt Intradag High-Low %", 0) >= 4.0]
+                # --- RAD 2: BOTTENVÄNDNINGAR / REKYLER ---
+                st.markdown("### 📉 Bottenvändningar / Rekyler")
+                col4, col5, col6 = st.columns(3)
 
-        m_inc_vol_3, m_inc_vol_4 = [], []
-        for _, row in df_c.iterrows():
-            vols = row.get("_full_volumes", [])
-            if len(vols) >= 4:
-                v_last_3 = [vols[-3] > vols[-4], vols[-2] > vols[-3], vols[-1] > vols[-2]]
-                v_last_4 = [vols[-4] > vols[-5]] + v_last_3 if len(vols) >= 5 else []
-                if all(v_last_3): m_inc_vol_3.append(row)
-                if len(v_last_4) == 4 and all(v_last_4): m_inc_vol_4.append(row)
+                with col4:
+                    st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
+                    if m_ner3_upp2: st.dataframe(get_renamed_df(m_ner3_upp2), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        col7, col8, col9 = st.columns(3)
+                with col5:
+                    st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
+                    if m_ner4_upp1: st.dataframe(get_renamed_df(m_ner4_upp1), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        with col7:
-            st.markdown(f"**Intradag High-Low > 4%** ({len(m_high_hl)} st)")
-            if m_high_hl: st.dataframe(get_renamed_df(m_high_hl), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                with col6:
+                    st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
+                    if m_ner5: st.dataframe(get_renamed_df(m_ner5), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-        with col8:
-            st.markdown(f"**Stigande volym (3 dagar)** ({len(m_inc_vol_3)} st)")
-            if m_inc_vol_3: st.dataframe(get_renamed_df(m_inc_vol_3), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                # --- RAD 3: INTRADAG & VOLYMSTRUKTUR ---
+                st.markdown("---")
+                st.markdown("### ⚡ Intradag & Volymmönster")
 
-        with col9:
-            st.markdown(f"**Stigande volym (4 dagar)** ({len(m_inc_vol_4)} st)")
-            if m_inc_vol_4: st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=False, height=350)
-            else: st.info("Inga träffar.")
+                m_high_hl = [row for row in df_res.to_dict(orient="records") if row.get("Snitt Intradag High-Low %", 0) >= 4.0]
 
+                m_inc_vol_3, m_inc_vol_4 = [], []
+                for _, row in df_res.iterrows():
+                    vols = row.get("_full_volumes", [])
+                    if len(vols) >= 4:
+                        v_last_3 = [vols[-3] > vols[-4], vols[-2] > vols[-3], vols[-1] > vols[-2]]
+                        v_last_4 = [vols[-4] > vols[-5]] + v_last_3 if len(vols) >= 5 else []
+                        if all(v_last_3): m_inc_vol_3.append(row)
+                        if len(v_last_4) == 4 and all(v_last_4): m_inc_vol_4.append(row)
 
-    # --- DYNAMISKA FLIKAR: EN FÖR VARJE LAND + SCREENER ---
-    # Skapa fliknamn med emojis för enkel navigering
-    tab_titles = [f"🚀 {country}" for country in available_countries] + ["📊 Huvudvy & Screener"]
-    all_tabs = st.tabs(tab_titles)
+                col7, col8, col9 = st.columns(3)
 
-    # Rendera land-dashboards för varje lands-flik
-    for idx, country in enumerate(available_countries):
-        with all_tabs[idx]:
-            df_country = run_analysis_for_country(country)
-            render_country_dashboard(df_country)
+                with col7:
+                    st.markdown(f"**Intradag High-Low > 4%** ({len(m_high_hl)} st)")
+                    if m_high_hl: st.dataframe(get_renamed_df(m_high_hl), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
 
-    # --- SISTA FLIKEN: HUVUDVY & SCREENER ---
-    with all_tabs[-1]:
-        st.subheader("📊 Huvudvy & Screener (Filtrera alla länder)")
-        
-        # Hämta data för det valda landet i sidofältet för screenern
-        df_screener = run_analysis_for_country(country_to_update)
+                with col8:
+                    st.markdown(f"**Stigande volym (3 dagar)** ({len(m_inc_vol_3)} st)")
+                    if m_inc_vol_3: st.dataframe(get_renamed_df(m_inc_vol_3), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
+
+                with col9:
+                    st.markdown(f"**Stigande volym (4 dagar)** ({len(m_inc_vol_4)} st)")
+                    if m_inc_vol_4: st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=False, height=400)
+                    else: st.info("Inga träffar.")
+            else:
+                st.warning(f"Ingen historisk data tillgänglig för {c_name}. Klicka på '🔄 Uppdatera Priser & Hämta ISIN' i sidofältet.")
+
+    # --- SISTA FLIKEN: SCREENER MED FILTER ---
+    with tabs[-1]:
+        st.subheader("📊 Interaktiv Screener & Detaljvy")
+        screener_country = st.selectbox("Välj land för screener:", available_countries, key="screener_country_select")
+
+        df_screener = run_country_analysis(screener_country)
 
         if not df_screener.empty:
             all_sectors = sorted(df_screener["Sektor"].dropna().unique().tolist())
@@ -795,8 +843,8 @@ if all_stocks:
             ]
 
             display_df = filtered_df.drop(columns=["_full_volumes", "_price_diff"])
-            st.dataframe(display_df, use_container_width=True, height=600)
+            st.dataframe(display_df, use_container_width=True, height=580)
         else:
-            st.info("Ingen data tillgänglig för screenern.")
+            st.info("Ingen data tillgänglig för det valda landet i screenern.")
 else:
     st.error(f"Kunde inte hitta filen '{EXCEL_FILE}' i mappen.")
