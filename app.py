@@ -882,10 +882,9 @@ if all_stocks:
         st.markdown(
             "> * **Pocket Pivots:** Uppdag vars volym slår den högsta säljvolymen på neddagar senaste 10d (institutionell dold ackumulering).\n"
             "> * **Volymtorka + Spike:** Omsättningen torkar ut kraftigt nyligen för att sedan explodera på uppsidan (säljarna uttömda).\n"
-            "> * **Effort vs Result (ERV):** Ovanligt bred prisrörelse kombinerat med massiv volymexpansion (stark obalans).\n"
-            "> * **VCP (Volatility Contraction Pattern):** Prisintervallen krymper progressivt över tid och bildar en tight bas (Minervinis utbrottsmodell)."
+            "> * **Effort vs Result (ERV):** Ovanligt bred prisrörelse kombinerat med massiv volymexpansion (stark obalans)."
         )
-        col10, col11, col12, col13 = st.columns(4)
+        col10, col11, col12 = st.columns(3)
 
         with col10:
             st.markdown(f"**Pocket Pivots** ({len(m_pocket_pivot)} st)")
@@ -902,10 +901,22 @@ if all_stocks:
             if m_effort_result: st.dataframe(get_renamed_df(m_effort_result), use_container_width=False, height=350)
             else: st.info("Inga träffar.")
 
-        with col13:
+        st.markdown("---")
+
+        # --- RAD 5: VCP (VOLATILITETSKONTRAKTION) - EGEN RAD ---
+        st.markdown("### 🧬 Volatilitetskontraktion (VCP – Minervini)")
+        st.markdown(
+            "> * **VCP:** Prisintervallen krymper progressivt över tid och bildar en tight bas. Indikerar att säljtrycket har torkat ut och att ett explosivt utbrott kan vara nära."
+        )
+        col_vcp1, col_vcp2, col_vcp3 = st.columns(3)
+        with col_vcp1:
             st.markdown(f"**VCP (Volatility Contraction)** ({len(m_vcp)} st)")
             if m_vcp: st.dataframe(get_renamed_df(m_vcp), use_container_width=False, height=350)
             else: st.info("Inga träffar.")
+        with col_vcp2:
+            st.empty()
+        with col_vcp3:
+            st.empty()
 
     # --- DYNAMISKA FLIKAR: EN FÖR VARJE LAND + SCREENER ---
     tab_titles = list(available_countries) + ["Huvudvy & Screener"]
