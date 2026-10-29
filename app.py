@@ -95,6 +95,7 @@ def load_isin_cache():
 def save_isin_cache_batch(isin_dict):
     if not isin_dict:
         return
+    init_db()  # Säkerställ att tabellen finns innan sparande
     conn = sqlite3.connect(DB_FILE)
     data = [(k, v) for k, v in isin_dict.items() if v]
     conn.executemany("INSERT OR REPLACE INTO stock_isin (ticker, isin) VALUES (?, ?)", data)
@@ -119,6 +120,7 @@ def load_history_from_db():
 
 
 def save_history_to_db(ticker, df):
+    init_db()
     conn = sqlite3.connect(DB_FILE)
     df_to_save = df.reset_index()
     date_col = df_to_save.columns[0]
@@ -471,7 +473,7 @@ if all_stocks:
 
                 for info in batch_stocks:
                     y_ticker = info["Yahoo_Ticker"]
-                    orig_ticket = info["Original_Ticker"]
+                    orig_ticker = info["Original_Ticker"]
                     c_prefix = info["Land"].lower()
                     avanza_id = info.get("Avanza_Id")
 
@@ -788,12 +790,10 @@ if all_stocks:
     with all_tabs[-1]:
         st.subheader("📊 Huvudvy & Screener (Filtrering och Export)")
         
-        # Välj land att screenera på i denna flik
         screener_country = st.selectbox("Välj land för screener:", available_countries, key="screener_country_select")
         df_screener = run_analysis_for_country(screener_country)
 
         if not df_screener.empty:
-            # --- SIDOFÄLTETS / FLIKENS FILTER ---
             st.markdown("### 🎛️ Screener-filter")
             f_col1, f_col2, f_col3 = st.columns(3)
 
@@ -810,7 +810,6 @@ if all_stocks:
             with f_col3:
                 min_abs_to = st.number_input("Minsta absoluta omsättning", min_value=0, value=0, step=100000)
 
-            # Extra filter-parametrar
             with st.expander("Fler avancerade filter (High-Low, Volym, Mönster)"):
                 use_hl_filter = st.checkbox("Aktivera High-Low filter")
                 min_avg_hl_pct = st.slider("Minst genomsnittlig High-Low (%)", 0.0, 20.0, 0.0, step=0.5)
