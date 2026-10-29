@@ -422,7 +422,7 @@ if all_stocks:
 
     available_countries = sorted(list(set([s["Land"] for s in all_stocks if s["Land"] != "nan"])))
 
-    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND ---
+    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND (INKLUSIVE AVANCERADE MODELLER) ---
     def run_analysis_for_country(c_name):
         c_stocks = [s for s in all_stocks if s["Land"] == c_name]
         analysis_rows = []
@@ -464,6 +464,34 @@ if all_stocks:
                     hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
                     avg_hl_pct = hl_pct_series.mean()
 
+                    # --- BERÄKNING AV AVANCERADE MODELLER ---
+                    last_open = df_21['Open'].iloc[-1]
+                    last_high = df_21['High'].iloc[-1]
+                    last_low = df_21['Low'].iloc[-1]
+                    
+                    # 1. Open-to-Close Momentum (Stängning nära High %)
+                    day_range = last_high - last_low
+                    close_near_high_pct = ((last_price - last_low) / day_range * 100) if day_range > 0 else 50.0
+
+                    # 2. Pocket Pivot (Volym på uppdag > max volym på neddagar senaste 10d)
+                    sub_10 = df_21.tail(11)
+                    is_up_day = last_price > last_open
+                    down_days_vols = [sub_10['Volume'].iloc[i] for i in range(len(sub_10)-1) if sub_10['Close'].iloc[i] < sub_10['Open'].iloc[i]]
+                    max_down_vol = max(down_days_vols) if down_days_vols else 0
+                    is_pocket_pivot = bool(is_up_day and (last_vol > max_down_vol) and (max_down_vol > 0))
+
+                    # 3. Volymtorka + Spike (Låg volym nyligen följt av volymexpansion och uppgång)
+                    vols_arr = df_21['Volume'].values
+                    avg_vol_10 = vols_arr[-11:-1].mean() if len(vols_arr) >= 11 else vols_arr[:-1].mean()
+                    recent_min_vol = vols_arr[-6:-1].min() if len(vols_arr) >= 6 else vols_arr[0]
+                    is_vol_dry_spike = bool((recent_min_vol <= 0.7 * avg_vol_10) and (last_vol >= 1.8 * avg_vol_10) and is_up_day)
+
+                    # 4. Effort vs Result (ERV - Stark pris- och volymexpansion jmf med 20d snitt)
+                    ranges_arr = (df_21['High'] - df_21['Low']) / df_21['Close'] * 100
+                    avg_range_20 = ranges_arr.iloc[:-1].mean()
+                    avg_vol_20 = df_21['Volume'].iloc[:-1].mean()
+                    is_effort_result = bool((ranges_arr.iloc[-1] >= 1.5 * avg_range_20) and (last_vol >= 1.8 * avg_vol_20) and is_up_day)
+
                     row_data = {
                         "Bolag": info["Bolagsnamn"],
                         "Ticker": info["Original_Ticker"],
@@ -484,6 +512,10 @@ if all_stocks:
                         "Avtagande Volym": dec_vol,
                         "Volym Upp + Pris Upp": vol_up_price_up,
                         "Volym Upp + Pris Ned": vol_up_price_down,
+                        "Stängning nära High %": round(close_near_high_pct, 1),
+                        "Pocket Pivot": is_pocket_pivot,
+                        "Volymtorka + Spike": is_vol_dry_spike,
+                        "Effort vs Result": is_effort_result,
                         "_price_diff": price_diff,
                         "_full_volumes": volumes_21
                     }
@@ -661,7 +693,6 @@ if all_stocks:
         st.markdown("---")
         st.markdown("### 🎛️ Screener-filter")
 
-        # Hämta data för att fylla multiselects i sidofältet baserat på valt land i databashantering
         df_sb_preview = run_analysis_for_country(country_to_update)
 
         all_sectors = sorted(df_sb_preview["Sektor"].dropna().unique().tolist()) if not df_sb_preview.empty else []
@@ -701,6 +732,13 @@ if all_stocks:
             min_neg = st.slider("Minst negativa dagar i rad", 0, 5, 0)
             min_inc_vol = st.slider("Minst dagar med stigande volym", 0, 5, 0)
             min_vol_p_up = st.slider("Minst dagar Volym Upp + Pris Upp", 0, 5, 0)
+
+        # --- NYA AVANCERADE KVANT- & VOLYMFILTER ---
+        with st.expander("🔬 Avancerade Kvant- & Volymfilter", expanded=False):
+            filter_pocket_pivot = st.checkbox("Endast Pocket Pivots")
+            filter_vol_dry_spike = st.checkbox("Endast Volymtorka + Spike")
+            filter_effort_result = st.checkbox("Endast Effort vs Result (ERV)")
+            min_close_near_high = st.slider("Minst stängning nära High (%)", 0.0, 100.0, 0.0, step=5.0)
 
     # --- RENDERINGSFUNKTION FÖR EN LANDSDASHBOARD ---
     def render_country_dashboard(c_name, df_c):
@@ -887,7 +925,8 @@ if all_stocks:
                 (df_screener["Pos. Dagar"] >= min_pos) &
                 (df_screener["Neg. Dagar"] >= min_neg) &
                 (df_screener["Stigande Volym"] >= min_inc_vol) &
-                (df_screener["Volym Upp + Pris Upp"] >= min_vol_p_up)
+                (df_screener["Volym Upp + Pris Upp"] >= min_vol_p_up) &
+                (df_screener["Stängning nära High %"] >= min_close_near_high)
             ]
 
             if use_hl_filter:
@@ -898,6 +937,15 @@ if all_stocks:
 
             if pattern_choice != "Inget specifikt mönster":
                 filtered_df = filtered_df[filtered_df.apply(match_pattern, axis=1)]
+
+            if filter_pocket_pivot:
+                filtered_df = filtered_df[filtered_df["Pocket Pivot"] == True]
+
+            if filter_vol_dry_spike:
+                filtered_df = filtered_df[filtered_df["Volymtorka + Spike"] == True]
+
+            if filter_effort_result:
+                filtered_df = filtered_df[filtered_df["Effort vs Result"] == True]
 
             display_df = filtered_df.drop(columns=["_full_volumes", "_price_diff"])
             display_df = display_df.rename(columns={"Volym vs Snitt %": f"Volym vs {vol_sma_days}d Snitt %"})
