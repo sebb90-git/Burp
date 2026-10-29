@@ -159,7 +159,7 @@ def get_avanza_stocks_metadata():
         item = {
             "orderbookId": orderbook_id,
             "ticker": ticker,
-            "yahooTicker": yahoo_t,  # lämnas tom om Avanza saknar den
+            "yahooTicker": yahoo_t,
             "isin": isin,
             "name": name
         }
@@ -206,7 +206,6 @@ def get_avanza_stocks_metadata():
         if fetch_pages([m_code], m_code) == 0:
             any_zero = True
 
-    # Om någon marknadsplatskod inte gav något: hämta utan marknadsfilter
     if any_zero:
         fetch_pages([], "UTAN FILTER (reserv)")
 
@@ -223,7 +222,6 @@ def _parse_avanza_ts(ts):
 
 
 def fetch_avanza_history(orderbook_id):
-    """Hämtar historisk dagsdata från Avanza. Provar flera endpoints."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Referer': 'https://www.avanza.se/',
@@ -279,7 +277,6 @@ def fetch_avanza_history(orderbook_id):
 
 
 def find_avanza_id_by_search(isin, name):
-    """Reserv: slå upp orderbookId via Avanzas sök när metadata-matchningen misslyckats."""
     headers = {
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -309,7 +306,6 @@ def find_avanza_id_by_search(isin, name):
 
 
 def yahoo_history_by_isin(isin):
-    """Reserv: låt Yahoo slå upp rätt symbol utifrån ISIN och hämta historik."""
     try:
         quotes = yf.Search(isin, max_results=5).quotes
     except Exception:
@@ -336,7 +332,6 @@ def load_data_from_excel(filepath):
     df_excel = pd.read_excel(filepath, sheet_name="Export")
     isin_cache = load_isin_cache()
 
-    # Hämta Avanza-metadata för svenska bolag för att få orderbookId
     avanza_meta = {}
     try:
         avanza_meta, avanza_log = get_avanza_stocks_metadata()
@@ -380,7 +375,6 @@ def load_data_from_excel(filepath):
         else:
             y_t = ticker_raw
 
-        # Avanza används ENDAST för orderbookId, skriver inte över Yahoo-tickern
         avanza_item = None
         if "sverige" in c_prefix:
             avanza_item = (
@@ -475,7 +469,6 @@ if all_stocks:
                     df_new = pd.DataFrame()
                     success = False
 
-                    # 1. Yahoo
                     try:
                         if len(batch_tickers) > 1:
                             if not data.empty and y_ticker in data:
@@ -494,7 +487,6 @@ if all_stocks:
                     except Exception:
                         pass
 
-                    # 1b. Komplettera med Avanza om Avanza har nyare dagar än Yahoo
                     if success and avanza_id and "sverige" in c_prefix:
                         try:
                             df_av = fetch_avanza_history(avanza_id)
@@ -514,7 +506,6 @@ if all_stocks:
                         except Exception:
                             pass
 
-                    # 2. Avanza-reserv (om Yahoo saknar data ELLER bara har gammal data)
                     if not success and avanza_id and "sverige" in c_prefix:
                         try:
                             df_av = fetch_avanza_history(avanza_id)
@@ -525,7 +516,6 @@ if all_stocks:
                         except Exception:
                             pass
 
-                    # 3. Avanza-sök (om metadata-matchningen inte gav något ID)
                     if not success and not avanza_id and "sverige" in c_prefix and info["Lista"] != "Index":
                         found_id = find_avanza_id_by_search(info["ISIN"], info["Bolagsnamn"])
                         if found_id:
@@ -536,7 +526,6 @@ if all_stocks:
                                 success = True
                                 stats["avanza_sok"] += 1
 
-                    # 4. Yahoo-sök på ISIN (hittar ev. annan symbol än Börsdatas)
                     if not success and info["ISIN"] and info["Lista"] != "Index":
                         df_y = yahoo_history_by_isin(info["ISIN"])
                         if is_fresh(df_y):
@@ -552,7 +541,6 @@ if all_stocks:
                         )
 
                     if success:
-                        # Säkerställ tidszonsfritt index så det går att slå ihop med databasen
                         if getattr(df_new.index, "tz", None) is not None:
                             df_new = df_new.copy()
                             df_new.index = df_new.index.tz_localize(None)
@@ -625,7 +613,6 @@ if all_stocks:
         def run_analysis(stocks_meta):
             analysis_rows = []
 
-            # Gemensamma handelsdagar: de 5 senaste datum där minst 30 % av bolagen har en kurs
             date_counts = {}
             for info in stocks_meta:
                 t = info["Yahoo_Ticker"]
@@ -880,7 +867,31 @@ if all_stocks:
             )
 
             # --- FLIKAR FÖR VYVAL ---
-            tab1, tab2 = st.tabs(["📊 Huvudvy & Screener", "📅 Senaste 5 dagarnas förändring"])
+            tab_dashboard, tab1, tab2 = st.tabs(["🚀 Dashboard & Topplistor", "📊 Huvudvy & Screener", "📅 Senaste 5 dagarnas förändring"])
+
+            with tab_dashboard:
+                st.subheader("📊 Daglig Marknadsöversikt & Topplistor")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### 🔥 Starkaste momentum (20d)")
+                    top_momentum = df_res.sort_values(by="%-förändring (20d)", ascending=False).head(5)
+                    st.dataframe(top_momentum[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True)
+                    
+                with col2:
+                    st.markdown("### 📈 Största volymökning idag")
+                    if "Volym vs Snitt %" in df_res.columns:
+                        top_volume = df_res.sort_values(by="Volym vs Snitt %", ascending=False).head(5)
+                        st.dataframe(top_volume[["Bolag", "Land", "Sektor", "Volym vs Snitt %"]], use_container_width=True)
+                    else:
+                        st.info("Kör volymberäkningen för att se topplista.")
+
+                st.markdown("---")
+                st.markdown("### 🏢 Sektoröversikt (Snittutveckling)")
+                sector_summary = df_res.groupby("Sektor")[["%-förändring (20d)", "Senaste Omsättning"]].mean().reset_index()
+                sector_summary = sector_summary.sort_values(by="%-förändring (20d)", ascending=False)
+                st.dataframe(sector_summary, use_container_width=True)
 
             with tab1:
                 st.dataframe(display_df, use_container_width=True, height=580)
