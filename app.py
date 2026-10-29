@@ -382,7 +382,7 @@ def load_data_from_excel(filepath):
         elif "sverige" in c_prefix:
             y_t = ticker_raw.replace(" ", "-") + ".ST"
         else:
-            y_t = ticker_raw
+            y_t = yahoo_ticker
 
         avanza_item = None
         if "sverige" in c_prefix:
@@ -422,7 +422,75 @@ if all_stocks:
 
     available_countries = sorted(list(set([s["Land"] for s in all_stocks if s["Land"] != "nan"])))
 
-    # --- SIDOFÄLT FÖR UPPDATERING ---
+    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND ---
+    def run_analysis_for_country(c_name):
+        c_stocks = [s for s in all_stocks if s["Land"] == c_name]
+        analysis_rows = []
+
+        for info in c_stocks:
+            active_ticker = info["Yahoo_Ticker"]
+            if active_ticker in history_dict:
+                df = history_dict[active_ticker]
+                df = df[(df.index <= pd.Timestamp.today()) & (df['Close'] > 0)].sort_index()
+
+                if len(df) >= 21:
+                    df_21 = df.tail(21).copy()
+                    closes_21 = df_21['Close'].tolist()
+                    volumes_21 = df_21['Volume'].tolist()
+
+                    price_diff = [closes_21[i] - closes_21[i-1] for i in range(1, 21)]
+                    vol_diff = [volumes_21[i] - volumes_21[i-1] for i in range(1, 21)]
+
+                    pos_days = sum(1 for p in reversed(price_diff) if p > 0)
+                    neg_days = sum(1 for p in reversed(price_diff) if p < 0)
+
+                    inc_vol = sum(1 for v in reversed(vol_diff) if v > 0)
+                    dec_vol = sum(1 for v in reversed(vol_diff) if v < 0)
+
+                    vol_up_price_up = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p > 0)
+                    vol_up_price_down = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p < 0)
+
+                    start_price = closes_21[1]
+                    end_price = closes_21[-1]
+                    pct_change = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
+
+                    prev_price = closes_21[-2]
+                    last_price = closes_21[-1]
+                    latest_day_pct = ((last_price - prev_price) / prev_price) * 100 if prev_price else 0.0
+                    last_vol = int(volumes_21[-1])
+                    last_turnover = int(last_price * last_vol)
+
+                    df_tail20 = df_21.tail(20)
+                    hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
+                    avg_hl_pct = hl_pct_series.mean()
+
+                    row_data = {
+                        "Bolag": info["Bolagsnamn"],
+                        "Ticker": info["Original_Ticker"],
+                        "ISIN": info["ISIN"],
+                        "Land": info["Land"],
+                        "Lista": info["Lista"],
+                        "%-förändring (20d)": round(pct_change, 2),
+                        "Snitt Intradag High-Low %": round(avg_hl_pct, 2),
+                        "Senaste Dag %": round(latest_day_pct, 2),
+                        "Senaste Volym": last_vol,
+                        "Senaste Omsättning": last_turnover,
+                        "Sektor": info["Sektor"],
+                        "Bransch": info["Bransch"],
+                        "Valuta": info["Kursvaluta"],
+                        "Pos. Dagar": pos_days,
+                        "Neg. Dagar": neg_days,
+                        "Stigande Volym": inc_vol,
+                        "Avtagande Volym": dec_vol,
+                        "Volym Upp + Pris Upp": vol_up_price_up,
+                        "Volym Upp + Pris Ned": vol_up_price_down,
+                        "_price_diff": price_diff,
+                        "_full_volumes": volumes_21
+                    }
+                    analysis_rows.append(row_data)
+        return pd.DataFrame(analysis_rows)
+
+    # --- SIDOFÄLT FÖR UPPDATERING OCH ALLA SCREENER-FILTER ---
     with st.sidebar:
         st.markdown("### ⚙️ Databashantering")
         country_to_update = st.selectbox("Välj land att uppdatera manuellt:", available_countries)
@@ -590,73 +658,49 @@ if all_stocks:
             st.success("Pris- och ISIN-uppdateringen klar!")
             st.rerun()
 
-    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND ---
-    def run_analysis_for_country(c_name):
-        c_stocks = [s for s in all_stocks if s["Land"] == c_name]
-        analysis_rows = []
+        st.markdown("---")
+        st.markdown("### 🎛️ Screener-filter")
 
-        for info in c_stocks:
-            active_ticker = info["Yahoo_Ticker"]
-            if active_ticker in history_dict:
-                df = history_dict[active_ticker]
-                df = df[(df.index <= pd.Timestamp.today()) & (df['Close'] > 0)].sort_index()
+        # Hämta data för att fylla multiselects i sidofältet baserat på valt land i databashantering
+        df_sb_preview = run_analysis_for_country(country_to_update)
 
-                if len(df) >= 21:
-                    df_21 = df.tail(21).copy()
-                    closes_21 = df_21['Close'].tolist()
-                    volumes_21 = df_21['Volume'].tolist()
+        all_sectors = sorted(df_sb_preview["Sektor"].dropna().unique().tolist()) if not df_sb_preview.empty else []
+        selected_sectors = st.multiselect("Välj sektor:", all_sectors, default=all_sectors)
 
-                    price_diff = [closes_21[i] - closes_21[i-1] for i in range(1, 21)]
-                    vol_diff = [volumes_21[i] - volumes_21[i-1] for i in range(1, 21)]
+        sub_df_sector = df_sb_preview[df_sb_preview["Sektor"].isin(selected_sectors)] if not df_sb_preview.empty else pd.DataFrame()
+        all_branches = sorted(sub_df_sector["Bransch"].dropna().unique().tolist()) if not sub_df_sector.empty else []
+        selected_branches = st.multiselect("Välj bransch:", all_branches, default=all_branches)
 
-                    pos_days = sum(1 for p in reversed(price_diff) if p > 0)
-                    neg_days = sum(1 for p in reversed(price_diff) if p < 0)
+        with st.expander("⚡ High-Low & Volym", expanded=False):
+            use_hl_filter = st.checkbox("Aktivera High-Low filter")
+            min_avg_hl_pct = st.slider("Minst genomsnittlig High-Low (%)", 0.0, 20.0, 0.0, step=0.5)
 
-                    inc_vol = sum(1 for v in reversed(vol_diff) if v > 0)
-                    dec_vol = sum(1 for v in reversed(vol_diff) if v < 0)
+            use_vol_filter = st.checkbox("Aktivera volymfilter")
+            vol_sma_days = st.slider("Jämför mot snitt antal dagar:", 1, 20, 4)
+            min_vol_spike = st.slider("Minst volym vs snitt (%)", -100, 500, 0, step=10)
 
-                    vol_up_price_up = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p > 0)
-                    vol_up_price_down = sum(1 for v, p in reversed(list(zip(vol_diff, price_diff))) if v > 0 and p < 0)
+        min_abs_to = st.number_input("Minsta absoluta omsättning", min_value=0, value=0, step=100000)
 
-                    start_price = closes_21[1]
-                    end_price = closes_21[-1]
-                    pct_change = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
+        with st.expander("🔄 Mönsterigenkänning", expanded=False):
+            pattern_choice = st.selectbox(
+                "Mönstertyp:",
+                ["Inget specifikt mönster", "Bottenvändning (Ner X dagar -> Upp Y dagar)", "Rekyl (Upp X dagar -> Ner Y dagar)"],
+                label_visibility="collapsed"
+            )
+            min_a_rev = 1
+            min_b_rev = 0
+            if pattern_choice.startswith("Bottenvändning"):
+                min_a_rev = st.slider("X (Dagar ner innan vändning):", 1, 5, 3)
+                min_b_rev = st.slider("Y (Dagar upp efter vändning):", 0, 4, 1)
+            elif pattern_choice.startswith("Rekyl"):
+                min_a_rev = st.slider("X (Dagar upp före rekyl):", 1, 5, 3)
+                min_b_rev = st.slider("Y (Dagar ner i rekyl):", 0, 4, 1)
 
-                    prev_price = closes_21[-2]
-                    last_price = closes_21[-1]
-                    latest_day_pct = ((last_price - prev_price) / prev_price) * 100 if prev_price else 0.0
-                    last_vol = int(volumes_21[-1])
-                    last_turnover = int(last_price * last_vol)
-
-                    df_tail20 = df_21.tail(20)
-                    hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
-                    avg_hl_pct = hl_pct_series.mean()
-
-                    row_data = {
-                        "Bolag": info["Bolagsnamn"],
-                        "Ticker": info["Original_Ticker"],
-                        "ISIN": info["ISIN"],
-                        "Land": info["Land"],
-                        "Lista": info["Lista"],
-                        "%-förändring (20d)": round(pct_change, 2),
-                        "Snitt Intradag High-Low %": round(avg_hl_pct, 2),
-                        "Senaste Dag %": round(latest_day_pct, 2),
-                        "Senaste Volym": last_vol,
-                        "Senaste Omsättning": last_turnover,
-                        "Sektor": info["Sektor"],
-                        "Bransch": info["Bransch"],
-                        "Valuta": info["Kursvaluta"],
-                        "Pos. Dagar": pos_days,
-                        "Neg. Dagar": neg_days,
-                        "Stigande Volym": inc_vol,
-                        "Avtagande Volym": dec_vol,
-                        "Volym Upp + Pris Upp": vol_up_price_up,
-                        "Volym Upp + Pris Ned": vol_up_price_down,
-                        "_price_diff": price_diff,
-                        "_full_volumes": volumes_21
-                    }
-                    analysis_rows.append(row_data)
-        return pd.DataFrame(analysis_rows)
+        with st.expander("📈 Momentum-filter", expanded=False):
+            min_pos = st.slider("Minst positiva dagar i rad", 0, 5, 0)
+            min_neg = st.slider("Minst negativa dagar i rad", 0, 5, 0)
+            min_inc_vol = st.slider("Minst dagar med stigande volym", 0, 5, 0)
+            min_vol_p_up = st.slider("Minst dagar Volym Upp + Pris Upp", 0, 5, 0)
 
     # --- RENDERINGSFUNKTION FÖR EN LANDSDASHBOARD ---
     def render_country_dashboard(c_name, df_c):
@@ -796,7 +840,7 @@ if all_stocks:
             df_country = run_analysis_for_country(country)
             render_country_dashboard(country, df_country)
 
-    # 2. SISTA FLIKEN: HUVUDVY & SCREENER MED ALLA DINA TIDIGARE FILTER
+    # 2. SISTA FLIKEN: HUVUDVY & SCREENER
     with all_tabs[-1]:
         st.subheader("📊 Huvudvy & Screener (Filtrering och Export)")
         
@@ -804,55 +848,6 @@ if all_stocks:
         df_screener = run_analysis_for_country(screener_country)
 
         if not df_screener.empty:
-            st.markdown("### 🎛️ Screener-filter")
-            
-            # Kompletta filter enligt din tidigare kod
-            f_col1, f_col2, f_col3 = st.columns(3)
-
-            with f_col1:
-                all_sectors = sorted(df_screener["Sektor"].dropna().unique().tolist())
-                selected_sectors = st.multiselect("Välj sektor:", all_sectors, default=all_sectors)
-
-            sub_df_sector = df_screener[df_screener["Sektor"].isin(selected_sectors)]
-            
-            with f_col2:
-                all_branches = sorted(sub_df_sector["Bransch"].dropna().unique().tolist())
-                selected_branches = st.multiselect("Välj bransch:", all_branches, default=all_branches)
-
-            with f_col3:
-                min_abs_to = st.number_input("Minsta absoluta omsättning", min_value=0, value=0, step=100000)
-
-            # Utökade expander-filter
-            with st.expander("⚡ Avancerade filter (High-Low, Volym, Mönster & Momentum)", expanded=True):
-                col_ex1, col_ex2 = st.columns(2)
-
-                with col_ex1:
-                    use_hl_filter = st.checkbox("Aktivera High-Low filter")
-                    min_avg_hl_pct = st.slider("Minst genomsnittlig High-Low (%)", 0.0, 20.0, 0.0, step=0.5)
-
-                    use_vol_filter = st.checkbox("Aktivera volymfilter")
-                    vol_sma_days = st.slider("Jämför mot snitt antal dagar:", 1, 20, 4)
-                    min_vol_spike = st.slider("Minst volym vs snitt (%)", -100, 500, 0, step=10)
-
-                with col_ex2:
-                    pattern_choice = st.selectbox(
-                        "Mönstertyp:",
-                        ["Inget specifikt mönster", "Bottenvändning (Ner X dagar -> Upp Y dagar)", "Rekyl (Upp X dagar -> Ner Y dagar)"]
-                    )
-                    min_a_rev = 1
-                    min_b_rev = 0
-                    if pattern_choice.startswith("Bottenvändning"):
-                        min_a_rev = st.slider("X (Dagar ner innan vändning):", 1, 5, 3)
-                        min_b_rev = st.slider("Y (Dagar upp efter vändning):", 0, 4, 1)
-                    elif pattern_choice.startswith("Rekyl"):
-                        min_a_rev = st.slider("X (Dagar upp före rekyl):", 1, 5, 3)
-                        min_b_rev = st.slider("Y (Dagar ner i rekyl):", 0, 4, 1)
-
-                    min_pos = st.slider("Minst positiva dagar i rad", 0, 5, 0)
-                    min_neg = st.slider("Minst negativa dagar i rad", 0, 5, 0)
-                    min_inc_vol = st.slider("Minst dagar med stigande volym", 0, 5, 0)
-                    min_vol_p_up = st.slider("Minst dagar Volym Upp + Pris Upp", 0, 5, 0)
-
             def calc_vol_spike(row):
                 vols = row["_full_volumes"]
                 target_vols = vols[-(vol_sma_days + 1):-1]
