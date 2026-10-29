@@ -870,42 +870,106 @@ if all_stocks:
             tab_dashboard, tab1, tab2 = st.tabs(["🚀 Dashboard & Topplistor", "📊 Huvudvy & Screener", "📅 Senaste 5 dagarnas förändring"])
 
             with tab_dashboard:
-                st.subheader("📊 Daglig Marknadsöversikt & Topplistor")
+                st.subheader("📊 Daglig Marknadsöversikt & Mönstertrigger")
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### 🔥 Starkaste momentum (20d)")
-                    top_momentum = df_res.sort_values(by="%-förändring (20d)", ascending=False).head(5)
-                    st.dataframe(top_momentum[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True)
+                # Hjälpfunktion för att matcha specifika mönster baserat på prisdifferenser
+                def check_exact_pattern(p_diff, pattern_type):
+                    if len(p_diff) < 5:
+                        return False
                     
-                with col2:
-                    st.markdown("### 📈 Största volymökning idag")
-                    if "Volym vs Snitt %" in df_res.columns:
-                        top_volume = df_res.sort_values(by="Volym vs Snitt %", ascending=False).head(5)
-                        st.dataframe(top_volume[["Bolag", "Land", "Sektor", "Volym vs Snitt %"]], use_container_width=True)
+                    if pattern_type == "ner_3_upp_2":
+                        # Ner 3 dagar (index -5, -4, -3) följt av upp 2 dagar (index -2, -1)
+                        return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] > 0 and p_diff[-1] > 0
+                    
+                    elif pattern_type == "ner_4_upp_1":
+                        # Ner 4 dagar följt av upp 1 dag
+                        return p_diff[-5] < 0 and p_diff[-4] < 0 and p_diff[-3] < 0 and p_diff[-2] < 0 and p_diff[-1] > 0
+                    
+                    elif pattern_type == "upp_4_ner_1":
+                        # Upp 4 dagar i rad sedan ner en dag
+                        return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] > 0 and p_diff[-1] < 0
+                    
+                    elif pattern_type == "upp_3_ner_2":
+                        # Upp 3 dagar i rad sedan ner två dagar
+                        return p_diff[-5] > 0 and p_diff[-4] > 0 and p_diff[-3] > 0 and p_diff[-2] < 0 and p_diff[-1] < 0
+                    
+                    elif pattern_type == "upp_5":
+                        # Upp 5 dagar i sträck
+                        return all(p > 0 for p in p_diff[-5:])
+                    
+                    elif pattern_type == "ner_5":
+                        # Ner 5 dagar i sträck
+                        return all(p < 0 for p in p_diff[-5:])
+                        
+                    return False
+
+                # Skapa listor för respektive mönster
+                m_ner3_upp2 = []
+                m_ner4_upp1 = []
+                m_upp4_ner1 = []
+                m_upp3_ner2 = []
+                m_upp5 = []
+                m_ner5 = []
+
+                for _, row in df_res.iterrows():
+                    p_diff = row.get("_price_diff", [])
+                    if check_exact_pattern(p_diff, "ner_3_upp_2"):
+                        m_ner3_upp2.append(row)
+                    if check_exact_pattern(p_diff, "ner_4_upp_1"):
+                        m_ner4_upp1.append(row)
+                    if check_exact_pattern(p_diff, "upp_4_ner_1"):
+                        m_upp4_ner1.append(row)
+                    if check_exact_pattern(p_diff, "upp_3_ner_2"):
+                        m_upp3_ner2.append(row)
+                    if check_exact_pattern(p_diff, "upp_5"):
+                        m_upp5.append(row)
+                    if check_exact_pattern(p_diff, "ner_5"):
+                        m_ner5.append(row)
+
+                # --- VISUALISERING I DASHBOARDEN ---
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("### 📉 Bottenvändningar / Rekyler")
+                    
+                    st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
+                    if m_ner3_upp2:
+                        st.dataframe(pd.DataFrame(m_ner3_upp2)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
                     else:
-                        st.info("Kör volymberäkningen för att se topplista.")
+                        st.info("Inga träffar.")
 
-                st.markdown("---")
-                st.markdown("### 🏢 Sektoröversikt (Snittutveckling)")
-                sector_summary = df_res.groupby("Sektor")[["%-förändring (20d)", "Senaste Omsättning"]].mean().reset_index()
-                sector_summary = sector_summary.sort_values(by="%-förändring (20d)", ascending=False)
-                st.dataframe(sector_summary, use_container_width=True)
+                    st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
+                    if m_ner4_upp1:
+                        st.dataframe(pd.DataFrame(m_ner4_upp1)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
+                    else:
+                        st.info("Inga träffar.")
 
-            with tab1:
-                st.dataframe(display_df, use_container_width=True, height=580)
+                    st.markdown(f"**Ner 5 dagar i sträck** ({len(m_ner5)} st)")
+                    if m_ner5:
+                        st.dataframe(pd.DataFrame(m_ner5)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
+                    else:
+                        st.info("Inga träffar.")
 
-            with tab2:
-                st.markdown("### Pris-, volym- och intradag-utveckling de senaste 5 dagarna")
-                base_cols = ["Bolag", "Ticker", "ISIN", "Land", "Lista", "Sektor", "Bransch", "Valuta"]
-                five_day_cols = [c for c in display_df.columns if re.match(r'^\d{4}-\d{2}-\d{2} ', c)]
+                with col2:
+                    st.markdown("### 📈 Momentum & Topprekyler")
 
-                if five_day_cols:
-                    df_5d = display_df[base_cols + five_day_cols]
-                    st.dataframe(df_5d, use_container_width=True, height=580)
-                else:
-                    st.info("Ingen 5-dagarsdata att visa.")
+                    st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
+                    if m_upp4_ner1:
+                        st.dataframe(pd.DataFrame(m_upp4_ner1)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
+                    else:
+                        st.info("Inga träffar.")
+
+                    st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
+                    if m_upp3_ner2:
+                        st.dataframe(pd.DataFrame(m_upp3_ner2)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
+                    else:
+                        st.info("Inga träffar.")
+
+                    st.markdown(f"**Upp 5 dagar i sträck** ({len(m_upp5)} st)")
+                    if m_upp5:
+                        st.dataframe(pd.DataFrame(m_upp5)[["Bolag", "Land", "Sektor", "%-förändring (20d)"]], use_container_width=True, height=200)
+                    else:
+                        st.info("Inga träffar.")
         else:
             st.warning(f"Ingen historisk data tillgänglig för {selected_country}. Klicka på '🔄 Uppdatera Priser & Hämta ISIN' i sidofältet.")
     else:
