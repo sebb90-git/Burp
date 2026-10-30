@@ -46,13 +46,11 @@ st.title("Internationell Börs-Screener & Trendanalys")
 EXCEL_FILE = "Borsdata_2026-10-19 alla tickers pa borsdata.xlsx"
 
 # --- AUTOMATISK SÖKVÄG FÖR GOOGLE DRIVE ---
-GOOGLE_DRIVE_DIR = "G:/Min enhet/Python"
+GOOGLE_DRIVE_DIR = r"G:\Min enhet\Python"
 
 if os.path.exists(GOOGLE_DRIVE_DIR):
-    # Skapar/använder databasen direkt i din Google Drive-mapp
     DB_FILE = os.path.join(GOOGLE_DRIVE_DIR, "stock_database.db")
 else:
-    # Om Google Drive-mappen mot förmodan inte hittas (t.ex. om disken inte är monterad)
     DB_FILE = "stock_database.db"
 
 
