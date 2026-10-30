@@ -45,14 +45,6 @@ st.title("Internationell Börs-Screener & Trendanalys")
 
 EXCEL_FILE = "Borsdata_2026-10-19 alla tickers pa borsdata.xlsx"
 
-# --- AUTOMATISK SÖKVÄG FÖR GOOGLE DRIVE ---
-GOOGLE_DRIVE_DIR = r"G:\Min enhet\Python"
-
-if os.path.exists(GOOGLE_DRIVE_DIR):
-    DB_FILE = os.path.join(GOOGLE_DRIVE_DIR, "stock_database.db")
-else:
-    DB_FILE = "stock_database.db"
-
 
 # --- HJÄLPFUNKTION FÖR STRÄNGTVÄTT (NORMERING) ---
 def normalize_str(s):
@@ -62,9 +54,19 @@ def normalize_str(s):
     return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
 
 
-# --- DATABASFUNKTIONER ---
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
+# --- DATABASHANTERING (SEPARAT FIL PER LAND FÖR GITHUB) ---
+def get_db_file_for_country(country_name):
+    """Genererar ett filnamn baserat på landet, t.ex. 'stock_database_sverige.db'."""
+    if not country_name or country_name == "nan":
+        clean_country = "default"
+    else:
+        clean_country = re.sub(r'[^a-zA-Z0-9]', '_', str(country_name).lower())
+    return f"stock_database_{clean_country}.db"
+
+
+def init_db(country_name):
+    db_file = get_db_file_for_country(country_name)
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS stock_prices (
@@ -88,9 +90,10 @@ def init_db():
     conn.close()
 
 
-def load_isin_cache():
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
+def load_isin_cache(country_name):
+    init_db(country_name)
+    db_file = get_db_file_for_country(country_name)
+    conn = sqlite3.connect(db_file)
     df_isin = pd.read_sql("SELECT ticker, isin FROM stock_isin", conn)
     conn.close()
     if not df_isin.empty:
@@ -98,20 +101,22 @@ def load_isin_cache():
     return {}
 
 
-def save_isin_cache_batch(isin_dict):
+def save_isin_cache_batch(country_name, isin_dict):
     if not isin_dict:
         return
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
+    init_db(country_name)
+    db_file = get_db_file_for_country(country_name)
+    conn = sqlite3.connect(db_file)
     data = [(k, v) for k, v in isin_dict.items() if v]
     conn.executemany("INSERT OR REPLACE INTO stock_isin (ticker, isin) VALUES (?, ?)", data)
     conn.commit()
     conn.close()
 
 
-def load_history_from_db():
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
+def load_history_from_db(country_name):
+    init_db(country_name)
+    db_file = get_db_file_for_country(country_name)
+    conn = sqlite3.connect(db_file)
     query = "SELECT ticker, date, Open, High, Low, Close, Volume FROM stock_prices"
     df_all = pd.read_sql(query, conn)
     conn.close()
@@ -125,9 +130,10 @@ def load_history_from_db():
     return history_dict
 
 
-def save_history_to_db(ticker, df):
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
+def save_history_to_db(country_name, ticker, df):
+    init_db(country_name)
+    db_file = get_db_file_for_country(country_name)
+    conn = sqlite3.connect(db_file)
     df_to_save = df.reset_index()
     date_col = df_to_save.columns[0]
     df_to_save = df_to_save.rename(columns={date_col: 'date'})
@@ -345,8 +351,8 @@ def load_data_from_excel(filepath):
         return []
 
     df_excel = pd.read_excel(filepath, sheet_name="Export")
-    isin_cache = load_isin_cache()
 
+    # För att ladda isin-cachen samlar vi ihop unika länder först eller kollar standard
     avanza_meta = {}
     try:
         avanza_meta, avanza_log = get_avanza_stocks_metadata()
@@ -355,7 +361,11 @@ def load_data_from_excel(filepath):
         st.session_state["avanza_log"] = [f"Fel vid hämtning: {e}"]
 
     stock_list = []
-    isin_batch = {}
+    
+    # Vi behöver läsa igenom för att mappa land till isin-cache
+    # Vi laddar in alla isin-cacher för de länder som finns i excelfilen
+    temp_countries = df_excel["Info - Land"].dropna().unique()
+    isin_caches = {c: load_isin_cache(c) for c in temp_countries}
 
     for _, r in df_excel.iterrows():
         ticker_raw = str(r.get("Info - Ticker", "")).strip()
@@ -369,6 +379,7 @@ def load_data_from_excel(filepath):
         isin = str(r.get("Info - ISIN", "")).strip()
 
         c_prefix = country.lower()
+        isin_cache = isin_caches.get(country, {})
 
         if isin == "nan" or not isin:
             isin = isin_cache.get(f"{c_prefix}_{ticker_raw}",
@@ -400,9 +411,11 @@ def load_data_from_excel(filepath):
             )
 
         if isin and isin != "nan":
-            isin_batch[f"{c_prefix}_{ticker_raw}"] = isin
-            isin_batch[f"{c_prefix}_{normalize_str(ticker_raw)}"] = isin
-            isin_batch[f"{c_prefix}_{normalize_str(name)}"] = isin
+            if country not in isin_caches:
+                isin_caches[country] = {}
+            isin_caches[country][f"{c_prefix}_{ticker_raw}"] = isin
+            isin_caches[country][f"{c_prefix}_{normalize_str(ticker_raw)}"] = isin
+            isin_caches[country][f"{c_prefix}_{normalize_str(name)}"] = isin
 
         stock_list.append({
             "Yahoo_Ticker": y_t,
@@ -417,19 +430,21 @@ def load_data_from_excel(filepath):
             "Sektor": sector if sector != "nan" else "Okänd sektor"
         })
 
-    save_isin_cache_batch(isin_batch)
+    # Spara alla isin-cacher per land
+    for c_name, i_dict in isin_caches.items():
+        save_isin_cache_batch(c_name, i_dict)
+
     return stock_list
 
 
 all_stocks = load_data_from_excel(EXCEL_FILE)
 
 if all_stocks:
-    history_dict = load_history_from_db()
-
     available_countries = sorted(list(set([s["Land"] for s in all_stocks if s["Land"] != "nan"])))
 
-    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND (INKLUSIVE VCP OCH AVANCERADE MODELLER) ---
+    # --- HJÄLPFUNKTION FÖR ANALYS PER LAND ---
     def run_analysis_for_country(c_name):
+        history_dict = load_history_from_db(c_name)
         c_stocks = [s for s in all_stocks if s["Land"] == c_name]
         analysis_rows = []
 
@@ -536,16 +551,14 @@ if all_stocks:
 
     # --- SIDOFÄLT FÖR UPPDATERING OCH ALLA SCREENER-FILTER ---
     with st.sidebar:
-        st.markdown("### ⚙️ Databashantering")
-        if os.path.exists(GOOGLE_DRIVE_DIR):
-            st.success("☁️ Google Drive-mappen är aktiv (Sparar till G:\\Min enhet\\Python)")
-        else:
-            st.warning("⚠️ Google Drive-mappen hittades inte, sparar lokalt.")
+        st.markdown("### ⚙️ Databashantering (GitHub)")
+        st.success("📁 Sparar separat databas per land i mappen.")
 
         country_to_update = st.selectbox("Välj land att uppdatera manuellt:", available_countries)
         
+        history_dict_sb = load_history_from_db(country_to_update)
         target_stocks_sb = [s for s in all_stocks if s["Land"] == country_to_update]
-        cached_count_sb = sum(1 for s in target_stocks_sb if s["Yahoo_Ticker"] in history_dict)
+        cached_count_sb = sum(1 for s in target_stocks_sb if s["Yahoo_Ticker"] in history_dict_sb)
         isin_count_sb = sum(1 for s in target_stocks_sb if s.get("ISIN"))
         st.caption(f"📊 **{country_to_update}**: {len(target_stocks_sb)} totalt | **{cached_count_sb}** med prisdata | **{isin_count_sb}** med ISIN")
 
@@ -585,7 +598,7 @@ if all_stocks:
                 batch_stocks = filtered_stocks_for_update[i:i+batch_size]
                 batch_tickers = [s["Yahoo_Ticker"] for s in batch_stocks]
 
-                status_text.text(f"Uppdaterar priser (batch {idx+1} av {total_batches})...")
+                status_text.text(f"Uppdaterar priser för {country_to_update} (batch {idx+1} av {total_batches})...")
                 data = silent_download(batch_tickers)
 
                 for info in batch_stocks:
@@ -673,16 +686,16 @@ if all_stocks:
                             df_new = df_new.copy()
                             df_new.index = df_new.index.tz_localize(None)
 
-                        if y_ticker in history_dict:
-                            df_old = history_dict[y_ticker]
+                        if y_ticker in history_dict_sb:
+                            df_old = history_dict_sb[y_ticker]
                             df_combined = pd.concat([df_old, df_new])
                             df_combined = df_combined[~df_combined.index.duplicated(keep='last')]
                             df_combined.sort_index(inplace=True)
-                            history_dict[y_ticker] = df_combined
-                            save_history_to_db(y_ticker, df_combined)
+                            history_dict_sb[y_ticker] = df_combined
+                            save_history_to_db(country_to_update, y_ticker, df_combined)
                         else:
-                            history_dict[y_ticker] = df_new
-                            save_history_to_db(y_ticker, df_new)
+                            history_dict_sb[y_ticker] = df_new
+                            save_history_to_db(country_to_update, y_ticker, df_new)
 
                         if not info["ISIN"]:
                             try:
@@ -699,12 +712,12 @@ if all_stocks:
                 progress_bar.progress((idx + 1) / total_batches)
 
             if isin_updates:
-                save_isin_cache_batch(isin_updates)
+                save_isin_cache_batch(country_to_update, isin_updates)
 
             st.session_state["update_report"] = stats
             status_text.text("")
             st.cache_data.clear()
-            st.success("Pris- och ISIN-uppdateringen klar!")
+            st.success(f"Pris- och ISIN-uppdateringen för {country_to_update} klar!")
             st.rerun()
 
         st.markdown("---")
@@ -761,7 +774,8 @@ if all_stocks:
     def render_country_dashboard(c_name, df_c):
         c_stocks_meta = [s for s in all_stocks if s["Land"] == c_name]
         total_in_file = len(c_stocks_meta)
-        cached_c = sum(1 for s in c_stocks_meta if s["Yahoo_Ticker"] in history_dict)
+        h_dict = load_history_from_db(c_name)
+        cached_c = sum(1 for s in c_stocks_meta if s["Yahoo_Ticker"] in h_dict)
         isin_c = sum(1 for s in c_stocks_meta if s.get("ISIN"))
 
         st.info(f"📍 **{c_name}**: Totalt **{total_in_file}** aktier i filen | Nedladdade med prisdata: **{cached_c}** st | Med ISIN: **{isin_c}** st")
@@ -1075,6 +1089,6 @@ if all_stocks:
 
             st.dataframe(display_df, use_container_width=True, height=600)
         else:
-            st.info("Inga data tillgänglig för screenern.")
+            st.info("Ingen data tillgänglig för screenern.")
 else:
     st.error(f"Kunde inte hitta filen '{EXCEL_FILE}' i mappen.")
