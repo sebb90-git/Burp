@@ -452,11 +452,15 @@ if all_stocks:
 
                     start_price = closes_21[1]
                     end_price = closes_21[-1]
-                    pct_change = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
+                    pct_change_20 = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
+
+                    # 5 dagars avkastning (från dag -5 till sista dagen)
+                    start_price_5 = closes_21[-6] if len(closes_21) >= 6 else closes_21[0]
+                    pct_change_5 = ((end_price - start_price_5) / start_price_5) * 100 if start_price_5 else 0.0
 
                     prev_price = closes_21[-2]
                     last_price = closes_21[-1]
-                    latest_day_pct = ((last_price - prev_price) / prev_price) * 100 if prev_price else 0.0
+                    pct_change_1 = ((last_price - prev_price) / prev_price) * 100 if prev_price else 0.0
                     last_vol = int(volumes_21[-1])
                     last_turnover = int(last_price * last_vol)
 
@@ -498,9 +502,11 @@ if all_stocks:
                         "ISIN": info["ISIN"],
                         "Land": info["Land"],
                         "Lista": info["Lista"],
-                        "%-förändring (20d)": round(pct_change, 2),
+                        "%-förändring (20d)": round(pct_change_20, 2),
+                        "%-förändring (5d)": round(pct_change_5, 2),
+                        "%-förändring (1d)": round(pct_change_1, 2),
                         "Snitt Intradag High-Low %": round(avg_hl_pct, 2),
-                        "Senaste Dag %": round(latest_day_pct, 2),
+                        "Senaste Dag %": round(pct_change_1, 2),
                         "Senaste Volym": last_vol,
                         "Senaste Omsättning": last_turnover,
                         "Sektor": info["Sektor"],
@@ -903,7 +909,7 @@ if all_stocks:
 
         st.markdown("---")
 
-        # --- RAD 5: VCP (VOLATILITETSKONTRAKTION) - EGEN RAD ---
+        # --- RAD 5: VCP (VOLATILITETSKONTRAKTION) ---
         st.markdown("### 🧬 Volatilitetskontraktion (VCP – Minervini)")
         st.markdown(
             "> * **VCP:** Prisintervallen krymper progressivt över tid och bildar en tight bas. Indikerar att säljtrycket har torkat ut och att ett explosivt utbrott kan vara nära."
@@ -917,6 +923,39 @@ if all_stocks:
             st.empty()
         with col_vcp3:
             st.empty()
+
+        st.markdown("---")
+
+        # --- RAD 6: SEKTORSAMMANSTÄLLNINGAR LÄNGST NER (1d, 5d, 20d) ---
+        st.markdown("### 📊 Sektorsammanställning per tidsperiod (+ / -)")
+        
+        def make_sector_table(col_name):
+            summary = []
+            for sector, group in df_c.groupby("Sektor"):
+                tot = len(group)
+                pos = sum(1 for x in group[col_name] if x > 0)
+                neg = sum(1 for x in group[col_name] if x < 0)
+                summary.append({
+                    "Sektor": sector,
+                    "Totalt Bolag": tot,
+                    "Positiva (+)": pos,
+                    "Negativa (-)": neg
+                })
+            return pd.DataFrame(summary).sort_values(by="Totalt Bolag", ascending=False)
+
+        sec_col1, sec_col2, sec_col3 = st.columns(3)
+
+        with sec_col1:
+            st.markdown("**1 dags utveckling**")
+            st.dataframe(make_sector_table("%-förändring (1d)"), use_container_width=True, hide_index=True)
+
+        with sec_col2:
+            st.markdown("**5 dagars utveckling**")
+            st.dataframe(make_sector_table("%-förändring (5d)"), use_container_width=True, hide_index=True)
+
+        with sec_col3:
+            st.markdown("**20 dagars utveckling**")
+            st.dataframe(make_sector_table("%-förändring (20d)"), use_container_width=True, hide_index=True)
 
     # --- DYNAMISKA FLIKAR: EN FÖR VARJE LAND + SCREENER ---
     tab_titles = list(available_countries) + ["Huvudvy & Screener"]
