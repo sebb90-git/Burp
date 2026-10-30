@@ -352,7 +352,6 @@ def load_data_from_excel(filepath):
 
     df_excel = pd.read_excel(filepath, sheet_name="Export")
 
-    # För att ladda isin-cachen samlar vi ihop unika länder först eller kollar standard
     avanza_meta = {}
     try:
         avanza_meta, avanza_log = get_avanza_stocks_metadata()
@@ -361,9 +360,6 @@ def load_data_from_excel(filepath):
         st.session_state["avanza_log"] = [f"Fel vid hämtning: {e}"]
 
     stock_list = []
-    
-    # Vi behöver läsa igenom för att mappa land till isin-cache
-    # Vi laddar in alla isin-cacher för de länder som finns i excelfilen
     temp_countries = df_excel["Info - Land"].dropna().unique()
     isin_caches = {c: load_isin_cache(c) for c in temp_countries}
 
@@ -430,7 +426,6 @@ def load_data_from_excel(filepath):
             "Sektor": sector if sector != "nan" else "Okänd sektor"
         })
 
-    # Spara alla isin-cacher per land
     for c_name, i_dict in isin_caches.items():
         save_isin_cache_batch(c_name, i_dict)
 
@@ -488,6 +483,9 @@ if all_stocks:
                     hl_pct_series = ((df_tail20['High'] - df_tail20['Low']) / df_tail20['Close']) * 100
                     avg_hl_pct = hl_pct_series.mean()
 
+                    # --- SENASTE DATUM ---
+                    last_date_str = df.index.max().strftime('%Y-%m-%d') if not df.empty else ""
+
                     # --- BERÄKNING AV AVANCERADE MODELLER & VCP ---
                     last_open = df_21['Open'].iloc[-1]
                     last_high = df_21['High'].iloc[-1]
@@ -522,6 +520,7 @@ if all_stocks:
                         "ISIN": info["ISIN"],
                         "Land": info["Land"],
                         "Lista": info["Lista"],
+                        "Senaste Datum": last_date_str,
                         "%-förändring (20d)": round(pct_change_20, 2),
                         "%-förändring (5d)": round(pct_change_5, 2),
                         "%-förändring (1d)": round(pct_change_1, 2),
@@ -819,7 +818,7 @@ if all_stocks:
             if row.get("Effort vs Result"): m_effort_result.append(row)
             if row.get("VCP"): m_vcp.append(row)
 
-        dashboard_cols = ["Bolag", "Sektor", "%20d", "%HL", "SD%", "OMS"]
+        dashboard_cols = ["Bolag", "Sektor", "Senaste Datum", "%20d", "%HL", "SD%", "OMS"]
 
         def get_renamed_df(data_list):
             if not data_list:
