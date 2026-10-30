@@ -33,11 +33,10 @@ st.markdown("""
             gap: 0.4rem;
         }
         [data-testid="stDataFrame"] {
-            width: fit-content !important;
-            max-width: 100%;
+            width: 100% !important;
         }
         [data-testid="stDataFrame"] > div {
-            width: fit-content !important;
+            width: 100% !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -454,7 +453,6 @@ if all_stocks:
                     end_price = closes_21[-1]
                     pct_change_20 = ((end_price - start_price) / start_price) * 100 if start_price else 0.0
 
-                    # 5 dagars avkastning (från dag -5 till sista dagen)
                     start_price_5 = closes_21[-6] if len(closes_21) >= 6 else closes_21[0]
                     pct_change_5 = ((end_price - start_price_5) / start_price_5) * 100 if start_price_5 else 0.0
 
@@ -815,17 +813,17 @@ if all_stocks:
 
         with col1:
             st.markdown(f"**Upp 4 dagar & Ner 1 dag** ({len(m_upp4_ner1)} st)")
-            if m_upp4_ner1: st.dataframe(get_renamed_df(m_upp4_ner1), use_container_width=False, height=350)
+            if m_upp4_ner1: st.dataframe(get_renamed_df(m_upp4_ner1), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col2:
             st.markdown(f"**Upp 3 dagar & Ner 2 dagar** ({len(m_upp3_ner2)} st)")
-            if m_upp3_ner2: st.dataframe(get_renamed_df(m_upp3_ner2), use_container_width=False, height=350)
+            if m_upp3_ner2: st.dataframe(get_renamed_df(m_upp3_ner2), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col3:
             st.markdown(f"**Upp 4 dagar i sträck** ({len(m_upp5)} st)")
-            if m_upp5: st.dataframe(get_renamed_df(m_upp5), use_container_width=False, height=350)
+            if m_upp5: st.dataframe(get_renamed_df(m_upp5), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         st.markdown("---")
@@ -836,17 +834,17 @@ if all_stocks:
 
         with col4:
             st.markdown(f"**Ner 3 dagar & Upp 2 dagar** ({len(m_ner3_upp2)} st)")
-            if m_ner3_upp2: st.dataframe(get_renamed_df(m_ner3_upp2), use_container_width=False, height=350)
+            if m_ner3_upp2: st.dataframe(get_renamed_df(m_ner3_upp2), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col5:
             st.markdown(f"**Ner 4 dagar & Upp 1 dag** ({len(m_ner4_upp1)} st)")
-            if m_ner4_upp1: st.dataframe(get_renamed_df(m_ner4_upp1), use_container_width=False, height=350)
+            if m_ner4_upp1: st.dataframe(get_renamed_df(m_ner4_upp1), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col6:
             st.markdown(f"**Ner 4 dagar i sträck** ({len(m_ner5)} st)")
-            if m_ner5: st.dataframe(get_renamed_df(m_ner5), use_container_width=False, height=350)
+            if m_ner5: st.dataframe(get_renamed_df(m_ner5), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         st.markdown("---")
@@ -868,17 +866,17 @@ if all_stocks:
 
         with col7:
             st.markdown(f"**Intradag High-Low > 4%** ({len(m_high_hl)} st)")
-            if m_high_hl: st.dataframe(get_renamed_df(m_high_hl), use_container_width=False, height=350)
+            if m_high_hl: st.dataframe(get_renamed_df(m_high_hl), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col8:
             st.markdown(f"**Stigande volym (3 dagar)** ({len(m_inc_vol_3)} st)")
-            if m_inc_vol_3: st.dataframe(get_renamed_df(m_inc_vol_3), use_container_width=False, height=350)
+            if m_inc_vol_3: st.dataframe(get_renamed_df(m_inc_vol_3), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col9:
             st.markdown(f"**Stigande volym (4 dagar)** ({len(m_inc_vol_4)} st)")
-            if m_inc_vol_4: st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=False, height=350)
+            if m_inc_vol_4: st.dataframe(get_renamed_df(m_inc_vol_4), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         st.markdown("---")
@@ -894,17 +892,17 @@ if all_stocks:
 
         with col10:
             st.markdown(f"**Pocket Pivots** ({len(m_pocket_pivot)} st)")
-            if m_pocket_pivot: st.dataframe(get_renamed_df(m_pocket_pivot), use_container_width=False, height=350)
+            if m_pocket_pivot: st.dataframe(get_renamed_df(m_pocket_pivot), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col11:
             st.markdown(f"**Volymtorka + Spike** ({len(m_vol_dry_spike)} st)")
-            if m_vol_dry_spike: st.dataframe(get_renamed_df(m_vol_dry_spike), use_container_width=False, height=350)
+            if m_vol_dry_spike: st.dataframe(get_renamed_df(m_vol_dry_spike), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         with col12:
             st.markdown(f"**Effort vs Result (ERV)** ({len(m_effort_result)} st)")
-            if m_effort_result: st.dataframe(get_renamed_df(m_effort_result), use_container_width=False, height=350)
+            if m_effort_result: st.dataframe(get_renamed_df(m_effort_result), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
 
         st.markdown("---")
@@ -917,7 +915,7 @@ if all_stocks:
         col_vcp1, col_vcp2, col_vcp3 = st.columns(3)
         with col_vcp1:
             st.markdown(f"**VCP (Volatility Contraction)** ({len(m_vcp)} st)")
-            if m_vcp: st.dataframe(get_renamed_df(m_vcp), use_container_width=False, height=350)
+            if m_vcp: st.dataframe(get_renamed_df(m_vcp), use_container_width=True, height=350)
             else: st.info("Inga träffar.")
         with col_vcp2:
             st.empty()
