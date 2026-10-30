@@ -30,6 +30,6 @@ jobs:
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "action@github.com"
-          git add stock_database.db
+          git add stock_database_*.db
           git commit -m "Auto-uppdatering av europeiska aktiekurser [skip ci]" || exit 0
           git push
