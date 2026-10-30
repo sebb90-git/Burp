@@ -44,7 +44,16 @@ st.markdown("""
 st.title("Internationell Börs-Screener & Trendanalys")
 
 EXCEL_FILE = "Borsdata_2026-10-19 alla tickers pa borsdata.xlsx"
-DB_FILE = "stock_database.db"
+
+# --- AUTOMATISK SÖKVÄG FÖR GOOGLE DRIVE ---
+GOOGLE_DRIVE_DIR = "G:/Min enhet/Python"
+
+if os.path.exists(GOOGLE_DRIVE_DIR):
+    # Skapar/använder databasen direkt i din Google Drive-mapp
+    DB_FILE = os.path.join(GOOGLE_DRIVE_DIR, "stock_database.db")
+else:
+    # Om Google Drive-mappen mot förmodan inte hittas (t.ex. om disken inte är monterad)
+    DB_FILE = "stock_database.db"
 
 
 # --- HJÄLPFUNKTION FÖR STRÄNGTVÄTT (NORMERING) ---
@@ -530,6 +539,11 @@ if all_stocks:
     # --- SIDOFÄLT FÖR UPPDATERING OCH ALLA SCREENER-FILTER ---
     with st.sidebar:
         st.markdown("### ⚙️ Databashantering")
+        if os.path.exists(GOOGLE_DRIVE_DIR):
+            st.success("☁️ Google Drive-mappen är aktiv (Sparar till G:\\Min enhet\\Python)")
+        else:
+            st.warning("⚠️ Google Drive-mappen hittades inte, sparar lokalt.")
+
         country_to_update = st.selectbox("Välj land att uppdatera manuellt:", available_countries)
         
         target_stocks_sb = [s for s in all_stocks if s["Land"] == country_to_update]
@@ -1063,6 +1077,6 @@ if all_stocks:
 
             st.dataframe(display_df, use_container_width=True, height=600)
         else:
-            st.info("Ingen data tillgänglig för screenern.")
+            st.info("Inga data tillgänglig för screenern.")
 else:
     st.error(f"Kunde inte hitta filen '{EXCEL_FILE}' i mappen.")
